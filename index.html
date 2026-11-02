@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Continuous Road Pilot V_8</title>
+<title>Continuous Road Pilot V_9</title>
 <style>
 /* ---------- THEMES ----------
    Day   = light page chrome + daylight road scene (default)
@@ -975,7 +975,7 @@ const CFG = {
     outcomeAt: 0.35,                    // points / fine appear at 35% of the move
     chainAt: 0.70,                      // the next choice opens at 70%, while the car is still rolling
     minDecel: 220,                      // px/s^2, lower bound for braking to a stop
-    surgeScale: 0.3,                    // other cars' forward "surge" is reduced to 30%
+    surgeScale: 0,                      // other cars do not surge forward and settle back while crawling
     npcEase: 'cubic-bezier(.33,0,.3,1)'
   },
   smooth: {
@@ -987,7 +987,9 @@ const CFG = {
   // Copycat demonstration timing (ms). The demo starts right after the participant's previous move,
   // and control returns once the copycat is on the shoulder and the queue has closed the gap
   // (the copycat is still visibly accelerating away while the participant drives on).
-  copycat: { startDelayMs: 100, blinkMs: 500, unlockAfterCutMs: 1900 },
+  // Copycat demonstration timing (ms). V_9: the demo starts while the previous move is still rolling, and
+  // control returns 0.7 s after the copycat starts pulling onto the shoulder (it stays visible as it moves away).
+  copycat: { startDelayMs: 0, blinkMs: 300, cutMs: 900, fillStartMs: 450, fillMs: 700, unlockAfterCutMs: 800 },
   // World-scroll distance per step (px). These were missing in V_3 (-> NaN, scenery froze). Values restored from V_2.
   stepDist: 330,
   shoulderStepDist: 460,
@@ -1054,7 +1056,7 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_8';
+const VERSION = 'V_9';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
 const isJamTrial = t => t >= CFG.jamStartTrial;
@@ -1129,7 +1131,7 @@ function crawlFrame(ts) {
 }
 function endTime(moveMs) {
   // Crawl + continuous feedback: the next choice opens before the move has finished (never into a copycat trial).
-  if (crawlActive() && feedbackStyle() === 'continuous' && !isCopycatTrial(trial + 1)) {
+  if (crawlActive() && feedbackStyle() === 'continuous') {
     return Math.round(moveMs * CFG.crawl.chainAt);
   }
   return moveMs;
@@ -1332,7 +1334,7 @@ function randInt(min, max) {
 function animateCarTo(car, targetY, durationMs, easing = 'cubic-bezier(.24,.72,.24,1)', brakeAtRatio = 0.74) {
   if (!car || !car.el) return;
   // V_7: on-screen settling moves use the S-curve and each car's own tempo (never longer than planned).
-  if (motionSmooth() && brakeAtRatio > 0 && targetY > -80 && targetY < 520) {
+  if (motionSmooth() && brakeAtRatio > 0 && durationMs >= 1000 && targetY > -80 && targetY < 520) {
     durationMs = Math.round(durationMs * (car.tempo || 1));
     easing = crawlActive() ? CFG.crawl.npcEase : CFG.smooth.ease;
   }
@@ -1729,7 +1731,7 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
 
       laneCars.forEach((car, idx) => {
         const destY = idx < 4 ? socialTargets[idx] : 600 + (idx - 4) * 106;
-        animateCarTo(car, destY, Math.round(durationMs * 0.90), 'cubic-bezier(.25,.72,.25,1)', destY < 400 ? 0.70 : 0);
+        animateCarTo(car, destY, Math.round(durationMs * (crawlActive() ? 0.6 : 0.90)), 'cubic-bezier(.25,.72,.25,1)', destY < 400 ? 0.70 : 0);
       });
       return;
     }
@@ -1882,7 +1884,7 @@ function runCopycatDemonstration(t, onSafe) {
       if (!copycat.el) { onSafe(); return; }
       copycat.el.classList.remove('braking');
       copycat.el.classList.add(steerClass);
-      copycat.el.style.transition = 'left 1.08s cubic-bezier(.25,.78,.25,1), top 1.15s cubic-bezier(.32,.64,.35,1)';
+      copycat.el.style.transition = `left ${T.cutMs}ms cubic-bezier(.25,.78,.25,1), top ${T.cutMs + 70}ms cubic-bezier(.32,.64,.35,1)`;
       copycat.el.style.left = laneX(targetShoulder) + '%';
       copycat.lane = targetShoulder;
       copycat.y = 80;
@@ -1899,7 +1901,7 @@ function runCopycatDemonstration(t, onSafe) {
         followers.forEach((follower, idx) => {
           if (idx >= targetFillSlots.length || !follower.el) return;
           setTimeout(() => {
-            animateCarTo(follower, targetFillSlots[idx] + follower.jitterY, 850, 'cubic-bezier(.25,.72,.25,1)', 0.72);
+            animateCarTo(follower, targetFillSlots[idx] + follower.jitterY, T.fillMs, 'cubic-bezier(.25,.72,.25,1)', 0.72);
           }, idx * 150);
         });
 
@@ -1909,17 +1911,16 @@ function runCopycatDemonstration(t, onSafe) {
             const promotedRear = laneRear[0];
             rearCars = rearCars.filter(c => c !== promotedRear);
             trafficCars.push(promotedRear);
+            // Starts after the cars ahead of it (so it never catches up), and before control returns.
             setTimeout(() => {
-              animateCarTo(promotedRear, SLOTS_FAR_LANE[3] + promotedRear.jitterY, 850, 'cubic-bezier(.25,.72,.25,1)', 0.72);
+              animateCarTo(promotedRear, SLOTS_FAR_LANE[3] + promotedRear.jitterY, T.fillMs, 'cubic-bezier(.25,.72,.25,1)', 0.72);
             }, 300);
 
             const replacementRear = spawnTrafficCar(595, copycatLane, null, null, true);
-            setTimeout(() => {
-              animateCarTo(replacementRear, CFG.rearSlotFarY + replacementRear.jitterY, 900, 'cubic-bezier(.22,.75,.24,1)', 0.78);
-            }, 340);
+            animateCarTo(replacementRear, CFG.rearSlotFarY + replacementRear.jitterY, T.fillMs + 50, 'cubic-bezier(.22,.75,.24,1)', 0.78);
           }
         }
-      }, 620);
+      }, T.fillStartMs);
 
       // Hand control back once the queue has closed the gap (followers settle ~1.85 s after the cut-out).
       setTimeout(onSafe, T.unlockAfterCutMs);
@@ -1941,7 +1942,7 @@ function runCopycatDemonstration(t, onSafe) {
           copycatVisible = false;
           trafficCars = trafficCars.filter(c => !c.removed);
         }, 1900);
-      }, 1120);
+      }, T.cutMs + 50);
     }, T.blinkMs);
   }, T.startDelayMs);
 }
@@ -2285,6 +2286,8 @@ function choose(key) {
 
   p.classList.remove('blink-left', 'blink-right', 'steer-left', 'steer-right');
   const turnLeadMs = changedLane ? 120 : 0;
+  // In crawl mode the road itself carries the sense of motion, so the car does not jump forward and back.
+  const bob = crawlActive() ? 0 : 1;
 
   if (changedLane) {
     p.classList.add(moveDir === 'left' ? 'blink-left' : 'blink-right');
@@ -2323,7 +2326,9 @@ function choose(key) {
       }, Math.round(driveDuration * 0.88));
     }
     else if (isEnteringShoulder) {
-      p.style.transition = 'left 0.35s cubic-bezier(.22,.86,.24,1), top 0.66s cubic-bezier(.22,.76,.24,1)';
+      p.style.transition = crawlActive()
+        ? 'left 0.65s cubic-bezier(.22,.86,.24,1), top 0.95s cubic-bezier(.22,.76,.24,1)'
+        : 'left 0.35s cubic-bezier(.22,.86,.24,1), top 0.66s cubic-bezier(.22,.76,.24,1)';
       p.classList.add(moveDir === 'left' ? 'steer-left' : 'steer-right');
       p.style.left = laneX(laneAfter) + '%';
 
@@ -2341,14 +2346,16 @@ function choose(key) {
     }
     else if (isStayingOnShoulder) {
       p.style.transition = 'left 0.42s ease, top 0.46s cubic-bezier(.22,.76,.24,1)';
-      p.style.top = (targetPlayerY - 14) + 'px';
+      p.style.top = (targetPlayerY - 14 * bob) + 'px';
       playerScreenY = targetPlayerY;
       setTimeout(() => {
         p.style.top = targetPlayerY + 'px';
       }, 460);
     }
     else if (isMergingBackToLane) {
-      p.style.transition = 'top 0.44s cubic-bezier(.25,.76,.25,1), left 0.42s cubic-bezier(.22,.82,.25,1)';
+      p.style.transition = crawlActive()
+        ? 'top 0.7s cubic-bezier(.25,.76,.25,1), left 0.7s cubic-bezier(.22,.82,.25,1)'
+        : 'top 0.44s cubic-bezier(.25,.76,.25,1), left 0.42s cubic-bezier(.22,.82,.25,1)';
       p.style.top = targetPlayerY + 'px';
       playerScreenY = targetPlayerY;
 
@@ -2365,23 +2372,23 @@ function choose(key) {
       }, 860);
     }
     else if (changedLane) {
-      p.style.transition = 'left 0.45s cubic-bezier(.22,.82,.25,1), top 0.45s ease-out';
+      p.style.transition = `left ${crawlActive() ? 0.8 : 0.45}s cubic-bezier(.22,.82,.25,1), top 0.45s ease-out`;
       p.classList.add(moveDir === 'left' ? 'steer-left' : 'steer-right');
       p.style.left = laneX(laneAfter) + '%';
-      p.style.top = (targetPlayerY - 12) + 'px';
+      p.style.top = (targetPlayerY - 12 * bob) + 'px';
       playerScreenY = targetPlayerY;
 
       setTimeout(() => {
         p.classList.remove('steer-left', 'steer-right');
         p.style.top = targetPlayerY + 'px';
-      }, 430);
+      }, crawlActive() ? 760 : 430);
       setTimeout(() => {
         p.classList.remove('blink-left', 'blink-right');
-      }, 620);
+      }, crawlActive() ? 900 : 620);
     }
     else {
       p.style.transition = 'top 0.50s cubic-bezier(.22,.75,.25,1)';
-      p.style.top = (targetPlayerY - 20) + 'px';
+      p.style.top = (targetPlayerY - 20 * bob) + 'px';
       playerScreenY = targetPlayerY;
       setTimeout(() => {
         p.style.top = targetPlayerY + 'px';
