@@ -683,6 +683,13 @@ body.dev-open .devpanel { transform: none; }
    The whole game is then scaled (zoom) to fit the window, so nothing needs scrolling.
    ========================================== */
 .hud-title { font-size: 15px; font-weight: 700; }
+.hud-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.lang-toggle {
+  flex: none; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--surface-border); background: var(--panel-bg); color: var(--text);
+  font: 600 12px 'Segoe UI', Arial, sans-serif;
+}
+.screen .actions .btn.back { margin-inline-end: auto; }
 body.layout-side .app { width: auto; }
 body.layout-side .shell {
   grid-template-columns: 760px 210px;
@@ -810,8 +817,13 @@ html.motion-smooth .npc .car-chassis {
   <section class="shell" dir="ltr">
     <header class="hud">
       <div>
-        <div class="meta" id="phase"></div>
-        <div id="trial" class="hud-title"></div>
+        <div class="hud-left">
+          <button class="lang-toggle hidden" id="langToggle" type="button"></button>
+          <div>
+            <div class="meta" id="phase"></div>
+            <div id="trial" class="hud-title"></div>
+          </div>
+        </div>
       </div>
       <div class="score" id="scoreBox"><span id="pointsLabel">POINTS</span>: <span id="score">2000</span></div>
       <div class="progress hidden" id="progress"><div class="progress-fill" id="progressFill"></div></div>
@@ -1101,6 +1113,8 @@ const TXT = {
     copy: 'Copy data',
     restart: 'Restart',
     cont: 'Continue',
+    back: 'Back',
+    otherLang: 'עברית',
     required: 'Please answer all the questions marked above before continuing.',
     consentTitle: 'Consent to participate',
     consentBody: [
@@ -1169,6 +1183,8 @@ const TXT = {
     copy: 'העתקת נתונים',
     restart: 'הפעלה מחדש',
     cont: 'המשך',
+    back: 'חזרה',
+    otherLang: 'English',
     required: 'יש לענות על כל השאלות שלמעלה לפני שממשיכים.',
     consentTitle: 'הסכמה להשתתפות במחקר',
     consentBody: [
@@ -1230,7 +1246,7 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_10';
+const VERSION = 'V_11';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
 const isJamTrial = t => t >= CFG.jamStartTrial;
@@ -1679,6 +1695,7 @@ function setLang(v) {
   $('hint').setAttribute('dir', v === 'he' ? 'rtl' : 'ltr');
   $('trial').setAttribute('dir', v === 'he' ? 'rtl' : 'ltr');
   $('scoreBox').setAttribute('dir', v === 'he' ? 'rtl' : 'ltr');
+  $('langToggle').textContent = TXT[v].otherLang;
   updateHud();
 }
 
@@ -1695,6 +1712,7 @@ function startGame() {
   experimentStartPerf = performance.now();
   experimentStartIso = new Date().toISOString();
   $('overlay').classList.add('hidden');
+  $('langToggle').classList.remove('hidden');
   lastSceneryWorldY = screenToWorldY(560);
   seedSceneryUpTo(screenToWorldY(-1400));
   if (typeof renderDev === 'function') renderDev();
@@ -2732,7 +2750,11 @@ function finish() {
 // The questionnaire pages go from open questions to specific ones (funnel), and there is no way back,
 // so a later question cannot shape an earlier answer. Everything is stored in the data file under "participant".
 // =====================================================================
-const participant = { lang: null, screens: [], consent: null, license: null, questionnaire: {}, withdrawData: null };
+const participant = { lang: null, screens: [], consent: null, license: null, questionnaire: {}, withdrawData: null,
+                      answerLog: [], langSwitches: [] };
+// Every named field's latest value, so answers survive going back and switching language.
+const formState = {};
+let currentScreen = null;
 const screensMode = () => (CFG.testMode ? (SETTINGS.screens || 'full') : 'full');
 const fill = (str, vars) => str.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
 const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -2775,22 +2797,28 @@ const SCREENS = {
   }),
   consent: t => ({
     html: `<h1>${t.consentTitle}</h1>${t.consentBody.map(p => `<p>${p}</p>`).join('')}
-      <label class="check"><input type="checkbox" id="consentBox"> <span>${t.consentCheck}</span></label>
+      <label class="check"><input type="checkbox" id="consentBox" name="consent"> <span>${t.consentCheck}</span></label>
       <div class="actions"><button class="btn" id="next" disabled>${t.cont}</button></div>`,
+    back: 'lang',
     mount: () => {
-      $('consentBox').onchange = () => { $('next').disabled = !$('consentBox').checked; };
-      $('next').onclick = () => { participant.consent = { agreed: true, iso: new Date().toISOString() }; showScreen('license'); };
+      const sync = () => { $('next').disabled = !$('consentBox').checked; };
+      $('consentBox').onchange = sync;
+      sync();
+      $('next').onclick = () => { participant.consent = { agreed: true, iso: new Date().toISOString() }; leaveScreen('license'); };
     }
   }),
   license: t => ({
     html: `<h1>${t.licenseTitle}</h1>
       <div class="q"><span class="q-label">${t.licenseQ}</span>${radioGroup('license', [['yes', t.yes], ['no', t.no]])}</div>
       <div class="actions"><button class="btn" id="next" disabled>${t.cont}</button></div>`,
+    back: 'consent',
     mount: root => {
-      root.querySelectorAll('input[name=license]').forEach(r => r.onchange = () => { $('next').disabled = false; });
+      const sync = () => { $('next').disabled = !readForm(root).license; };
+      root.querySelectorAll('input[name=license]').forEach(r => r.onchange = sync);
+      sync();
       $('next').onclick = () => {
         participant.license = readForm(root).license;
-        showScreen(participant.license === 'yes' ? 'intro' : 'ineligible');
+        leaveScreen(participant.license === 'yes' ? 'intro' : 'ineligible');
       };
     }
   }),
@@ -2807,23 +2835,24 @@ const SCREENS = {
       </div>
       <p class="muted">${t.keysNote}</p>
       <div class="actions"><button class="btn" id="go">${t.go}</button></div>`,
-    mount: () => { $('go').onclick = () => { $('go').blur(); startGame(); }; }
+    back: () => (screensMode() === 'skip' ? null : 'license'),
+    mount: () => { $('go').onclick = () => { $('go').blur(); currentScreen = null; startGame(); }; }
   }),
   arrived: t => ({
     cls: 'center',
     html: `<h1>${t.arrivedTitle}</h1><p>${fill(t.arrivedBody, { score })}</p>
       <div class="actions" style="justify-content:center"><button class="btn" id="next">${t.cont}</button></div>`,
-    mount: () => { $('next').onclick = () => showScreen('q1'); }
+    mount: () => { $('next').onclick = () => leaveScreen('q1'); }
   }),
   q1: t => questionPage(t, t.q1Title, `
       <div class="q"><span class="q-label">${t.qPurpose}</span><textarea name="purpose"></textarea></div>
       <div class="q"><span class="q-label">${t.qUnusual}</span><textarea name="unusual"></textarea></div>
       <div class="q"><span class="q-label">${t.qRealism}</span>${scale7('realism', t)}</div>`,
-    ['realism'], 'q2'),
+    ['realism'], 'q2', null),
   q2: t => questionPage(t, t.q2Title, `
       <div class="q"><span class="q-label">${t.qShoulder}</span>${radioGroup('saw_shoulder_vehicles', [['yes', t.yes], ['no', t.no], ['not_sure', t.notSure]])}</div>
       <div class="q"><span class="q-label">${t.qDrivers}</span>${radioGroup('other_drivers', [['participants', t.optParticipants], ['computer', t.optComputer], ['not_sure', t.notSure]])}</div>`,
-    ['saw_shoulder_vehicles', 'other_drivers'], 'q3'),
+    ['saw_shoulder_vehicles', 'other_drivers'], 'q3', 'q1'),
   q3: t => questionPage(t, t.q3Title, `
       <div class="q"><span class="q-label">${t.qAge}</span><input type="number" name="age" min="16" max="99" inputmode="numeric"></div>
       <div class="q"><span class="q-label">${t.qGender}</span>${radioGroup('gender', [['female', t.gFemale], ['male', t.gMale], ['other', t.gOther], ['na', t.gNa]])}</div>
@@ -2831,16 +2860,16 @@ const SCREENS = {
       <div class="q"><span class="q-label">${t.qFreq}</span><select name="driving_frequency">
         <option value="">${t.choose}</option><option value="daily">${t.fDaily}</option><option value="weekly">${t.fWeekly}</option>
         <option value="once_a_week">${t.fOnce}</option><option value="less">${t.fLess}</option></select></div>`,
-    ['age', 'gender', 'license_years', 'driving_frequency'], 'debrief'),
+    ['age', 'gender', 'license_years', 'driving_frequency'], 'debrief', 'q2'),
   debrief: t => ({
     html: `<h1>${t.debriefTitle}</h1>${t.debriefBody.map(p => `<p>${p}</p>`).join('')}
-      <label class="check"><input type="checkbox" id="withdrawBox"> <span>${t.withdraw}</span></label>
+      <label class="check"><input type="checkbox" id="withdrawBox" name="withdraw"> <span>${t.withdraw}</span></label>
       <div style="margin-top:14px">${t.debriefAfter.map(p => `<p>${p}</p>`).join('')}</div>
       <div class="actions"><button class="btn" id="next">${t.finishBtn}</button></div>`,
     mount: () => {
       $('next').onclick = () => {
         participant.withdrawData = $('withdrawBox').checked;
-        showScreen('thanks');
+        leaveScreen('thanks');
       };
     }
   }),
@@ -2870,8 +2899,9 @@ function mountTestEndButtons() {
 }
 
 // One questionnaire page: all listed fields are required; the open questions are optional.
-function questionPage(t, title, body, required, nextName) {
+function questionPage(t, title, body, required, nextName, backName) {
   return {
+    back: backName,
     html: `<h2>${title}</h2>${body}<div class="form-error" id="formError"></div>
       <div class="actions"><button class="btn" id="next">${t.cont}</button></div>`,
     mount: root => {
@@ -2880,21 +2910,67 @@ function questionPage(t, title, body, required, nextName) {
         const missing = required.filter(k => answers[k] === '' || answers[k] === undefined);
         if (missing.length) { $('formError').textContent = t.required; return; }
         Object.assign(participant.questionnaire, answers);
-        showScreen(nextName);
+        leaveScreen(nextName);
       };
     }
   };
 }
 
-function showScreen(name) {
-  participant.screens.push({ name, iso: new Date().toISOString() });
+// Restores saved values into a freshly drawn screen.
+function prefill(root) {
+  root.querySelectorAll('input, select, textarea').forEach(el => {
+    if (!el.name || !(el.name in formState)) return;
+    const v = formState[el.name];
+    if (el.type === 'radio') el.checked = (el.value === v);
+    else if (el.type === 'checkbox') el.checked = !!v;
+    else el.value = v;
+  });
+}
+// Keeps what is on screen, logs it (with time and direction) and moves on.
+function leaveScreen(target, direction = 'forward') {
+  const ov = $('overlay');
+  const answers = readForm(ov);
+  Object.assign(formState, answers);
+  if (Object.keys(answers).length) {
+    participant.answerLog.push({ screen: currentScreen, direction, answers, iso: new Date().toISOString() });
+  }
+  showScreen(target);
+}
+function toggleLanguage() {
+  const ov = $('overlay');
+  const onScreen = currentScreen && !ov.classList.contains('hidden');
+  if (onScreen) Object.assign(formState, readForm(ov));
+  const nv = lang === 'he' ? 'en' : 'he';
+  participant.langSwitches.push({ from: lang, to: nv, screen: onScreen ? currentScreen : (running ? 'drive' : null), trial, iso: new Date().toISOString() });
+  setLang(nv);
+  participant.lang = nv;
+  if (onScreen) showScreen(currentScreen, true);
+}
+
+function showScreen(name, redraw = false) {
+  if (!redraw) participant.screens.push({ name, iso: new Date().toISOString() });
+  currentScreen = name;
   const t = TXT[lang] || TXT.en;
   const sc = SCREENS[name](t);
   const ov = $('overlay');
   ov.classList.remove('hidden');
   ov.innerHTML = `<div class="card screen ${sc.cls || ''}" dir="${lang === 'he' ? 'rtl' : 'ltr'}">${sc.html}</div>`;
-  ov.scrollTop = 0;
+  if (!redraw) ov.scrollTop = 0;
+  // Back button (never from the debrief: once the deception is explained, earlier answers must not change).
+  const backTarget = typeof sc.back === 'function' ? sc.back() : sc.back;
+  const actions = ov.querySelector('.actions');
+  if (backTarget && actions) {
+    const b = document.createElement('button');
+    b.className = 'btn secondary back';
+    b.type = 'button';
+    b.textContent = t.back;
+    b.onclick = () => leaveScreen(backTarget, 'back');
+    actions.prepend(b);
+  }
+  prefill(ov);
   if (sc.mount) sc.mount(ov);
+  // The language button is on every screen except the language choice itself.
+  $('langToggle').classList.toggle('hidden', name === 'lang');
 }
 
 // ---------- Fit the game to the window (14" laptops included) ----------
@@ -3136,6 +3212,7 @@ function initDevPanel() {
 }
 
 initDevPanel();
+$('langToggle').onclick = () => { $('langToggle').blur(); toggleLanguage(); };
 setLang('en');
 showScreen('lang');
 fitLayout();
