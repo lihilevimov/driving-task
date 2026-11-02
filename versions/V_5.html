@@ -1,0 +1,2375 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Continuous Road Pilot V_5</title>
+<style>
+/* ---------- THEMES ----------
+   Day   = light page chrome + daylight road scene (default)
+   Night = the original dark look (V_1-V_4)
+   Switch in the experimenter panel, or set data-theme on <html>. */
+:root {
+  --yellow: #f2c94c;
+  --green: #43d17b;
+  --red: #ff5c68;
+}
+:root[data-theme="day"] {
+  --page-bg: linear-gradient(180deg, #f4f7fa 0%, #e7ecf2 100%);
+  --text: #1c2633;
+  --muted: #667387;
+  --surface: #ffffff;
+  --surface-border: #d6dde6;
+  --shell-shadow: 0 14px 40px rgba(30, 45, 70, 0.13);
+  --hud-bg: #ffffff;
+  --panel-bg: #f3f5f8;
+  --key-bg: #ffffff;
+  --key-border: #c6cfdb;
+  --key-shadow: #c9d1dc;
+  --key-text: #2b3646;
+  --accent: #2f6fdb;
+  --score: #1b9450;
+  --overlay-bg: rgba(246, 248, 251, 0.97);
+  --card-text: #3d4959;
+  --btn-secondary-bg: #e3e8ef;
+  --btn-secondary-text: #2b3646;
+  --grass-a: #5d8d44;
+  --grass-b: #6b9c4f;
+  --grass-c: #56833e;
+  --road: #575e66;
+  --shoulder: #646b73;
+}
+:root[data-theme="night"] {
+  --page-bg: radial-gradient(circle at top, #263754, #0b1019 70%);
+  --text: #ffffff;
+  --muted: #aab4c6;
+  --surface: #121b2b;
+  --surface-border: #3c4a62;
+  --shell-shadow: 0 20px 60px #0009;
+  --hud-bg: #101827;
+  --panel-bg: #111a2a;
+  --key-bg: #263249;
+  --key-border: #526079;
+  --key-shadow: #080d16;
+  --key-text: #ffffff;
+  --accent: #3d8bfd;
+  --score: #43d17b;
+  --overlay-bg: #0f1726f5;
+  --card-text: #d5dbe6;
+  --btn-secondary-bg: #3a475e;
+  --btn-secondary-text: #ffffff;
+  --grass-a: #23391e;
+  --grass-b: #2d4727;
+  --grass-c: #20331b;
+  --road: #32373e;
+  --shoulder: #3b4048;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--page-bg);
+  color: var(--text);
+  font-family: 'Segoe UI', Arial, sans-serif;
+  user-select: none;
+  transition: padding-right .25s ease;
+}
+.app { width: min(94vw, 760px); padding: 12px; }
+.shell {
+  overflow: hidden;
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shell-shadow);
+}
+.hud {
+  height: 62px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--hud-bg);
+  border-bottom: 1px solid var(--surface-border);
+  position: relative;
+  z-index: 40;
+}
+.meta { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.score {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--score);
+  padding: 4px 12px;
+  border-radius: 8px;
+  transition: transform 0.22s ease, color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
+}
+.score.pulse-gain {
+  transform: scale(1.16);
+  color: var(--score);
+  background: rgba(67, 209, 123, 0.18);
+  box-shadow: 0 0 16px rgba(67, 209, 123, 0.45);
+}
+.score.pulse-loss {
+  transform: scale(1.18);
+  color: #ff6b76;
+  background: rgba(255, 92, 104, 0.22);
+  box-shadow: 0 0 18px rgba(255, 92, 104, 0.55);
+}
+
+.stage {
+  position: relative;
+  height: 540px;
+  overflow: hidden;
+  direction: ltr;
+  background:
+    linear-gradient(90deg,
+      var(--grass-a) 0%,
+      var(--grass-b) 8.5%,
+      var(--grass-c) 9.5%,
+      var(--grass-c) 90.5%,
+      var(--grass-b) 91.5%,
+      var(--grass-a) 100%);
+}
+.roadbase { position: absolute; inset: 0; z-index: 1; }
+.roadbase .walkwayL,
+.roadbase .walkwayR,
+.roadbase .leftShoulder,
+.roadbase .rightShoulder,
+.roadbase .road,
+.roadbase .edgeL,
+.roadbase .edgeR,
+.roadbase .guardL,
+.roadbase .guardR,
+.roadbase .divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+/* Pedestrian Park Walking Paths outside the highway guardrails */
+.walkwayL {
+  left: 1.6%;
+  width: 3.4%;
+  background:
+    repeating-linear-gradient(180deg, #b89f82 0 22px, #ab9276 22px 24px);
+  border-left: 1.5px solid #8a7359;
+  border-right: 1.5px solid #8a7359;
+  box-shadow: 0 0 6px #0006;
+  z-index: 2;
+}
+.walkwayR {
+  right: 1.6%;
+  width: 3.4%;
+  background:
+    repeating-linear-gradient(180deg, #b89f82 0 22px, #ab9276 22px 24px);
+  border-left: 1.5px solid #8a7359;
+  border-right: 1.5px solid #8a7359;
+  box-shadow: 0 0 6px #0006;
+  z-index: 2;
+}
+
+/* Elevated 3D Galvanized Steel W-Beam Guardrail casting a strong shadow onto the asphalt shoulder */
+.guardL {
+  left: 8.8%;
+  width: 12px;
+  background:
+    linear-gradient(90deg,
+      #394047 0%,
+      #bcc6d0 18%,
+      #eef5fc 36%,
+      #6c757e 54%,
+      #d8e2ec 76%,
+      #434a52 100%);
+  border-left: 1px solid #2b3036;
+  border-right: 1.5px solid #252a30;
+  box-shadow:
+    11px 0 14px -1px rgba(0, 0, 0, 0.78),
+    5px 0 5px 0 rgba(0, 0, 0, 0.65),
+    -4px 0 8px 0 rgba(0, 0, 0, 0.6);
+  z-index: 5;
+}
+.guardR {
+  right: 8.8%;
+  width: 12px;
+  background:
+    linear-gradient(90deg,
+      #434a52 0%,
+      #d8e2ec 24%,
+      #6c757e 46%,
+      #eef5fc 64%,
+      #bcc6d0 82%,
+      #394047 100%);
+  border-left: 1.5px solid #252a30;
+  border-right: 1px solid #2b3036;
+  box-shadow:
+    -11px 0 14px -1px rgba(0, 0, 0, 0.78),
+    -5px 0 5px 0 rgba(0, 0, 0, 0.65),
+    4px 0 8px 0 rgba(0, 0, 0, 0.6);
+  z-index: 5;
+}
+
+/* Smooth continuous asphalt shoulders */
+.leftShoulder {
+  left: 10%;
+  width: 13%;
+  background:
+    linear-gradient(90deg, #00000045 0%, transparent 24%, #ffffff05 60%, #00000020 100%),
+    var(--shoulder);
+}
+.rightShoulder {
+  right: 10%;
+  width: 13%;
+  background:
+    linear-gradient(90deg, #00000020 0%, #ffffff05 40%, transparent 76%, #00000045 100%),
+    var(--shoulder);
+}
+
+.road {
+  left: 23%;
+  right: 23%;
+  background:
+    linear-gradient(90deg,
+      #00000022 0%,
+      transparent 14%,
+      #ffffff06 25%,
+      transparent 36%,
+      #00000020 50%,
+      transparent 64%,
+      #ffffff06 75%,
+      transparent 86%,
+      #00000022 100%),
+    var(--road);
+  box-shadow: 0 0 0 1px #20252b inset;
+}
+.edgeL { left: 23%; width: 4px; background: var(--yellow); z-index: 2; }
+.edgeR { right: 23%; width: 4px; background: var(--yellow); z-index: 2; }
+.divider {
+  left: calc(50% - 2.5px);
+  width: 5px;
+  background: repeating-linear-gradient(to bottom, #f0f3f7 0 32px, transparent 32px 68px);
+  background-position-y: 0;
+  z-index: 2;
+}
+.roadbase.driving .divider {
+  animation: laneFlow .31s linear infinite;
+}
+.roadbase.driving.crawl .divider {
+  animation: laneFlow .55s linear infinite;
+}
+.roadbase.driving.fast .divider {
+  animation: laneFlow .17s linear infinite;
+}
+@keyframes laneFlow {
+  to { background-position-y: 68px; }
+}
+.roadworld {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -36000px;
+  height: 40000px;
+  z-index: 4;
+  will-change: transform;
+}
+
+/* Dedicated screen-space layer for all NPC traffic cars */
+.traffic-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* ==========================================
+   TALL GUARDRAIL POSTS & PARK SCENERY
+   ========================================== */
+.scenery {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+}
+.guard-postL, .guard-postR {
+  position: absolute;
+  width: 14px;
+  height: 18px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #eef4fa 0%, #9aa4ae 55%, #5b636b 100%);
+  border: 1.5px solid #2f353b;
+  z-index: 6;
+}
+.guard-postL {
+  left: calc(8.8% - 2px);
+  border-right: 3.5px solid #ff4d4f;
+  box-shadow: 7px 3px 8px rgba(0, 0, 0, 0.75);
+}
+.guard-postR {
+  right: calc(8.8% - 2px);
+  border-left: 3.5px solid #ff4d4f;
+  box-shadow: -7px 3px 8px rgba(0, 0, 0, 0.75);
+}
+
+/* ==========================================
+   UNIFIED VEHICLE ANATOMY WITH #ID ON ROOF OF ALL CARS
+   ========================================== */
+.car {
+  position: absolute;
+  width: 48px;
+  height: 82px;
+  margin-left: -24px;
+  z-index: 10;
+  will-change: top, left, transform;
+}
+.car-chassis {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 2px solid #dfe9f5;
+  border-radius: 14px 14px 10px 10px;
+  background: var(--car-color, #2987e8);
+  box-shadow: 0 10px 18px #000a, inset 0 0 8px #ffffff26;
+  transition: transform 0.34s cubic-bezier(.22,.8,.25,1);
+}
+.car.steer-right .car-chassis {
+  transform: rotate(7.5deg);
+}
+.car.steer-left .car-chassis {
+  transform: rotate(-7.5deg);
+}
+
+.mirror {
+  position: absolute;
+  top: 20px;
+  width: 6px;
+  height: 9px;
+  background: var(--car-color, #2987e8);
+  border: 1.5px solid #dfe9f5;
+  border-radius: 3px;
+}
+.mirror.left { left: -6px; border-right: 0; border-radius: 4px 0 0 3px; }
+.mirror.right { right: -6px; border-left: 0; border-radius: 0 4px 3px 0; }
+
+.windshield {
+  position: absolute;
+  top: 11px;
+  left: 6px;
+  right: 6px;
+  height: 15px;
+  border-radius: 6px 6px 3px 3px;
+  background: linear-gradient(180deg, #1b283c, #0f1826);
+  border: 1px solid #ffffff30;
+}
+.roof {
+  position: absolute;
+  top: 27px;
+  left: 5px;
+  right: 5px;
+  height: 30px;
+  border-radius: 4px;
+  background: rgba(10, 16, 28, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.roof-id {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: #ffffff;
+  text-shadow: 0 1px 3px #000e, 0 0 2px #000;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  line-height: 1;
+}
+.rear-window {
+  position: absolute;
+  bottom: 10px;
+  left: 7px;
+  right: 7px;
+  height: 12px;
+  border-radius: 3px 3px 5px 5px;
+  background: linear-gradient(0deg, #1b283c, #0f1826);
+  border: 1px solid #ffffff24;
+}
+.headlight {
+  position: absolute;
+  top: 1px;
+  width: 9px;
+  height: 4px;
+  border-radius: 3px;
+  background: #fff9db;
+  box-shadow: 0 -8px 12px 2px #fff6b366;
+}
+.headlight.left { left: 6px; }
+.headlight.right { right: 6px; }
+
+.brakelight {
+  position: absolute;
+  bottom: 1px;
+  width: 11px;
+  height: 4.5px;
+  border-radius: 2px;
+  background: #7a1c24;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.brakelight.left { left: 5px; }
+.brakelight.right { right: 5px; }
+.car.braking .brakelight {
+  background: #ff2a3a;
+  box-shadow: 0 4px 12px 3px #ff1e2e99, 0 0 6px 1px #ff8088;
+}
+.car.hard-brake .brakelight {
+  background: #ff4552;
+  box-shadow: 0 6px 18px 6px #ff1e2ecc, 0 0 10px 2px #ffb3b8;
+}
+
+.signal {
+  position: absolute;
+  width: 7px;
+  height: 5px;
+  border-radius: 2px;
+  background: #594318;
+  opacity: 0.35;
+}
+.signal.front-left  { top: 2px; left: 1px; }
+.signal.front-right { top: 2px; right: 1px; }
+.signal.rear-left   { bottom: 2px; left: 1px; }
+.signal.rear-right  { bottom: 2px; right: 1px; }
+
+@keyframes blinkAmber {
+  0%, 48% {
+    background: #ffae00;
+    opacity: 1;
+    box-shadow: 0 0 11px 4px #ff9900cc, 0 0 4px 1px #fff;
+  }
+  50%, 100% {
+    background: #594318;
+    opacity: 0.3;
+    box-shadow: none;
+  }
+}
+.car.blink-left .signal.front-left,
+.car.blink-left .signal.rear-left {
+  animation: blinkAmber 0.34s steps(1) infinite;
+}
+.car.blink-right .signal.front-right,
+.car.blink-right .signal.rear-right {
+  animation: blinkAmber 0.34s steps(1) infinite;
+}
+
+.player {
+  left: 63.5%;
+  top: 338px;
+  z-index: 18;
+  --car-color: #2987e8;
+  transition: left .42s cubic-bezier(.22,.82,.25,1), top .58s cubic-bezier(.22,.78,.24,1);
+}
+.npc {
+  transition: left .48s cubic-bezier(.22,.8,.25,1), top .75s cubic-bezier(.25,.72,.25,1);
+}
+
+/* ==========================================
+   DEAD-CENTER EXPANDING FEEDBACK
+   ========================================== */
+.feedback {
+  position: absolute;
+  z-index: 35;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: 900;
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  padding: 8px 22px;
+  border-radius: 16px;
+  will-change: transform, opacity;
+}
+.gain {
+  font-size: 64px;
+  color: #52f28e;
+  background: rgba(12, 24, 18, 0.72);
+  border: 2px solid rgba(82, 242, 142, 0.55);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8), 0 0 24px rgba(67, 209, 123, 0.35);
+  text-shadow: 0 4px 14px #000;
+}
+.loss {
+  font-size: 54px;
+  color: #ff6672;
+  background: rgba(24, 8, 12, 0.88);
+  border: 2.5px solid rgba(255, 92, 104, 0.85);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.9), 0 0 28px rgba(255, 92, 104, 0.5);
+  text-shadow: 0 4px 12px #000;
+}
+
+@keyframes expandCenter {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.52);
+  }
+  16% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  86% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.36);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.46);
+  }
+}
+
+.controls {
+  min-height: 144px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 13px 18px 18px;
+  background: var(--panel-bg);
+  border-top: 1px solid var(--surface-border);
+}
+.pad {
+  direction: ltr !important;
+  display: grid;
+  grid-template-columns: 58px 58px 58px;
+  grid-template-rows: 51px 51px;
+  gap: 6px;
+}
+.key {
+  border: 1px solid var(--key-border);
+  border-radius: 10px;
+  background: var(--key-bg);
+  color: var(--key-text);
+  font-size: 25px;
+  font-weight: 800;
+  box-shadow: 0 4px 0 var(--key-shadow);
+  cursor: pointer;
+  transition: transform 0.08s, background 0.15s, opacity 0.15s;
+}
+.key:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 var(--key-shadow);
+}
+.key:disabled { opacity: .45; cursor: default; }
+.up { grid-column: 2; grid-row: 1; }
+.left { grid-column: 1; grid-row: 2; }
+.down { grid-column: 2; grid-row: 2; }
+.right { grid-column: 3; grid-row: 2; }
+.hint {
+  max-width: 270px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 25px;
+  text-align: center;
+  background: var(--overlay-bg);
+  color: var(--text);
+}
+.card { max-width: 530px; }
+.card p { color: var(--card-text); line-height: 1.55; }
+.btn {
+  margin: 6px;
+  padding: 11px 22px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 750;
+  font-size: 15px;
+  cursor: pointer;
+}
+.btn.secondary { background: var(--btn-secondary-bg); color: var(--btn-secondary-text); }
+.btn.active-lang { outline: 2px solid var(--text); outline-offset: 2px; }
+/* ==========================================
+   EXPERIMENTER PANEL (test mode only)
+   ========================================== */
+.dev-toggle {
+  position: fixed; top: 14px; right: 14px; z-index: 200;
+  padding: 8px 14px; border-radius: 999px;
+  border: 1px solid var(--surface-border); background: var(--surface); color: var(--text);
+  font: 600 13px 'Segoe UI', Arial, sans-serif; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,.12);
+}
+body.dev-open .dev-toggle { display: none; }
+.devpanel {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 340px; z-index: 210;
+  overflow-y: auto; direction: ltr; text-align: left;
+  background: var(--surface); color: var(--text);
+  border-left: 1px solid var(--surface-border);
+  box-shadow: -8px 0 30px rgba(0,0,0,.12);
+  font-size: 13px; user-select: text;
+  transform: translateX(105%); transition: transform .25s ease;
+}
+body.dev-open .devpanel { transform: none; }
+@media (min-width: 1150px) { body.dev-open { padding-right: 340px; } }
+@media (max-width: 600px) { .devpanel { width: 100%; } }
+.dev-head {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--surface-border);
+}
+.dev-head strong { font-size: 14px; }
+.dev-x { border: 0; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; }
+.dev-sec { padding: 12px 16px; border-bottom: 1px solid var(--surface-border); }
+.dev-sec h3 {
+  margin: 0 0 8px; display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+}
+.dev-sub { font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.dev-label { display: block; margin: 9px 0 4px; font-size: 12px; color: var(--muted); }
+.seg { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--panel-bg); border: 1px solid var(--surface-border); }
+.seg button {
+  flex: 1; padding: 6px 4px; border: 0; border-radius: 6px; background: transparent;
+  color: var(--text); font: 600 12px 'Segoe UI', Arial, sans-serif; cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; }
+.grid2 label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.devpanel input[type=number] {
+  width: 100%; padding: 5px 7px; border-radius: 6px;
+  border: 1px solid var(--surface-border); background: var(--key-bg); color: var(--text); font: inherit;
+}
+.devpanel input:disabled { opacity: .5; }
+.dev-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 9px; }
+.dev-btn {
+  padding: 6px 10px; border-radius: 7px; border: 1px solid var(--surface-border);
+  background: var(--key-bg); color: var(--text); font: 600 12px 'Segoe UI', Arial, sans-serif; cursor: pointer;
+}
+.dev-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.dev-status { line-height: 1.65; font-variant-numeric: tabular-nums; }
+.dev-status .k { color: var(--muted); }
+.ev { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--panel-bg); line-height: 1.6; font-variant-numeric: tabular-nums; }
+.ev .warn { color: #d0473b; font-weight: 600; }
+.dev-note { margin: 7px 0 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.hidden { display: none !important; }
+@media(max-width: 600px) {
+  .stage { height: 470px; }
+  .controls { flex-direction: column; gap: 12px; }
+}
+</style>
+</head>
+<body>
+<main class="app">
+  <section class="shell">
+    <header class="hud">
+      <div>
+        <div class="meta" id="phase"></div>
+        <div id="trial"></div>
+      </div>
+      <div class="score" id="scoreBox"><span id="pointsLabel">POINTS</span>: <span id="score">2000</span></div>
+    </header>
+
+    <div class="stage" id="stage">
+      <div class="roadbase" id="roadbase" aria-hidden="true">
+        <div class="walkwayL"></div>
+        <div class="guardL"></div>
+        <div class="leftShoulder"></div>
+        <div class="road"></div>
+        <div class="rightShoulder"></div>
+        <div class="guardR"></div>
+        <div class="walkwayR"></div>
+        <div class="edgeL"></div>
+        <div class="edgeR"></div>
+        <div class="divider"></div>
+      </div>
+
+      <!-- Scrolling roadside scenery layer -->
+      <div class="roadworld" id="world">
+        <div id="objects"></div>
+      </div>
+
+      <!-- Screen-space traffic layer (shares exact coordinate system with #player) -->
+      <div class="traffic-layer" id="trafficLayer"></div>
+
+      <div class="car player braking" id="player"></div>
+
+      <div class="feedback gain" id="gain"></div>
+      <div class="feedback loss" id="loss"></div>
+
+      <div class="overlay" id="overlay">
+        <div class="card">
+          <h1 id="title">Continuous road pilot</h1>
+          <p id="intro">Complete the route with as many points as possible. Use the arrow keys or the control pad.</p>
+          <div>
+            <button class="btn" id="en">English</button>
+            <button class="btn secondary" id="he">עברית</button>
+          </div>
+          <button class="btn hidden" id="start">Start</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="controls">
+      <div class="pad" dir="ltr">
+        <button class="key up" data-key="ArrowUp">↑</button>
+        <button class="key left" data-key="ArrowLeft">←</button>
+        <button class="key down" data-key="ArrowDown">↓</button>
+        <button class="key right" data-key="ArrowRight">→</button>
+      </div>
+      <div class="hint" id="hint">You can navigate using the mouse or the keyboard arrow keys.</div>
+    </footer>
+  </section>
+</main>
+
+<!-- ================= EXPERIMENTER PANEL (removed automatically when CFG.testMode = false) ================= -->
+<button class="dev-toggle hidden" id="devToggle" title="Experimenter panel (shortcut: `)">⚙ Experimenter</button>
+<aside class="devpanel" id="devPanel" aria-label="Experimenter panel">
+  <div class="dev-head">
+    <strong>Experimenter panel</strong>
+    <button class="dev-x" id="devClose" title="Close (shortcut: `)">×</button>
+  </div>
+
+  <section class="dev-sec">
+    <div class="dev-status" id="devStatus"></div>
+  </section>
+
+  <section class="dev-sec">
+    <h3>Run mode</h3>
+    <div class="seg" data-setting="runMode">
+      <button data-v="scripted">Scripted</button>
+      <button data-v="manual">Manual (unlimited)</button>
+    </div>
+    <p class="dev-note" id="runModeNote"></p>
+  </section>
+
+  <section class="dev-sec" id="secPhase">
+    <h3>Phase <span class="dev-sub">applies from the next trial</span></h3>
+    <div class="seg" data-setting="manualPhase">
+      <button data-v="baseline">Baseline</button>
+      <button data-v="social_exposure">Exposure</button>
+      <button data-v="exploit">Exploit</button>
+      <button data-v="deterrence">Deterrence</button>
+    </div>
+  </section>
+
+  <section class="dev-sec" id="secCounts">
+    <h3>Trials per phase <span class="dev-sub" id="countTotal"></span></h3>
+    <div class="grid2">
+      <label>Baseline <input type="number" min="0" step="1" data-count="baseline"></label>
+      <label>Exposure <input type="number" min="0" step="1" data-count="socialExposure"></label>
+      <label>Exploit <input type="number" min="0" step="1" data-count="exploit"></label>
+      <label>Deterrence <input type="number" min="0" step="1" data-count="deterrence"></label>
+    </div>
+    <div class="dev-row">
+      <button class="dev-btn" data-countpreset="quick">Quick (5·2·2·4)</button>
+      <button class="dev-btn" data-countpreset="full">Full (20·2·4·20)</button>
+    </div>
+  </section>
+
+  <section class="dev-sec">
+    <h3>Conditions <span class="dev-sub">apply from the next trial</span></h3>
+    <span class="dev-label">Social exposure</span>
+    <div class="seg" data-setting="social">
+      <button data-v="experimental">Copycat</button>
+      <button data-v="control">Control</button>
+    </div>
+    <span class="dev-label">Deterrence</span>
+    <div class="seg" data-setting="det">
+      <button data-v="high">High certainty</button>
+      <button data-v="low">Low certainty</button>
+    </div>
+    <span class="dev-label">Shoulder mechanics</span>
+    <div class="seg" data-setting="shoulder">
+      <button data-v="stay">Stay on shoulder</button>
+      <button data-v="merge">Overtake &amp; merge</button>
+    </div>
+  </section>
+
+  <section class="dev-sec">
+    <h3>Payoffs</h3>
+    <div class="grid2">
+      <label>Starting points <input type="number" step="1" data-param="starting"></label>
+      <label>Jam starts at trial <input type="number" min="1" step="1" data-param="jamStartTrial"></label>
+      <label>Open road <input type="number" step="1" data-param="openRoadReward"></label>
+      <label>Jam: road <input type="number" step="1" data-param="jamNormativeReward"></label>
+      <label>Jam: shoulder <input type="number" step="1" data-param="shoulderReward"></label>
+      <label>Brake cost <input type="number" step="1" data-param="brakeCost"></label>
+      <label>High: probability <input type="number" min="0" max="1" step="0.01" data-param="high.p"></label>
+      <label>High: fine <input type="number" min="0" step="1" data-param="high.fine"></label>
+      <label>Low: probability <input type="number" min="0" max="1" step="0.01" data-param="low.p"></label>
+      <label>Low: fine <input type="number" min="0" step="1" data-param="low.fine"></label>
+    </div>
+    <div class="dev-row" id="payoffPresets"></div>
+    <div class="ev" id="evSummary"></div>
+    <p class="dev-note">Starting points and jam start are fixed once the run begins. All other values apply from the next trial.</p>
+  </section>
+
+  <section class="dev-sec">
+    <h3>Fine outcome <span class="dev-sub">for testing the display</span></h3>
+    <div class="seg" data-setting="fineOverride">
+      <button data-v="random">Random (real)</button>
+      <button data-v="always">Always</button>
+      <button data-v="never">Never</button>
+    </div>
+  </section>
+
+  <section class="dev-sec">
+    <h3>Display</h3>
+    <div class="seg" data-setting="theme">
+      <button data-v="day">Day</button>
+      <button data-v="night">Night</button>
+    </div>
+  </section>
+
+  <section class="dev-sec">
+    <div class="dev-row" style="margin-top:0">
+      <button class="dev-btn primary" id="devDownload">Download data</button>
+      <button class="dev-btn" id="devEnd">End run</button>
+      <button class="dev-btn" id="devRestart">Restart</button>
+      <button class="dev-btn" id="devReset">Reset settings</button>
+    </div>
+    <p class="dev-note">Settings are remembered in this browser between restarts. Shortcut: <b>`</b> opens/closes this panel.</p>
+  </section>
+</aside>
+
+<script>
+// ==========================================
+// 1. CENTRAL CONFIGURATION (CFG)
+// ==========================================
+const CFG = {
+  testMode: true,
+  countsTest: { baseline: 5, socialExposure: 2, exploit: 2, deterrence: 4 },
+  countsFull: { baseline: 20, socialExposure: 2, exploit: 4, deterrence: 20 },
+  starting: 2000,
+  // First trial on which the traffic jam is active (trials before it = open road).
+  jamStartTrial: 3,
+  openRoadReward: 10,
+  jamNormativeReward: 5,
+  shoulderReward: 10,
+  brakeCost: 5,
+  high: { p: 0.9, fine: 50 },
+  low: { p: 0.1, fine: 450 },
+  freeDriveMs: 1050,
+  jamDriveMs: 1650,
+  shoulderDriveMs: 1180,
+  brakeMs: 520,
+  theme: 'day',
+  // Copycat demonstration timing (ms). The demo starts right after the participant's previous move,
+  // and control returns once the copycat is on the shoulder and the queue has closed the gap
+  // (the copycat is still visibly accelerating away while the participant drives on).
+  copycat: { startDelayMs: 200, blinkMs: 650, unlockAfterCutMs: 1900 },
+  // World-scroll distance per step (px). These were missing in V_3 (-> NaN, scenery froze). Values restored from V_2.
+  stepDist: 330,
+  shoulderStepDist: 460,
+  brakeStepDist: 45,
+  playerNormY: 338,
+  playerShoulderY: 230,
+  rearSlotPlayerY: 448,
+  rearSlotOtherY: 464,
+  rearSlotFarY: 452
+};
+
+// Queue Slots (All cars have height = 82px):
+// 1. Player's current normative lane: 3 cars at [0, 98, 196] -> leaves an inviting 60px gap ahead of Player at 338px!
+// 2. Adjacent normative lane (can be merged into): 3 cars at [26, 128, 230] -> keeps the merge pocket at ~338px open!
+// 3. Far normative lane (when Player is on a shoulder and CANNOT merge into the far lane):
+//    4 cars at [12, 120, 228, 336] -> Car #4 sits right at 336px so the far lane has NO empty merge gap!
+const SLOTS_AHEAD_OF_PLAYER = [0, 98, 196];
+const SLOTS_ADJACENT_LANE   = [26, 128, 230];
+const SLOTS_FAR_LANE        = [12, 120, 228, 336];
+
+function isFarLaneWhenOnShoulder(lane, pLaneIdx) {
+  const playerLaneName = LANES[pLaneIdx];
+  return (
+    (playerLaneName === 'shoulder' && lane === 'left') ||
+    (playerLaneName === 'leftShoulder' && lane === 'right')
+  );
+}
+
+function getLaneSlots(lane, pLaneIdx) {
+  const playerLaneName = LANES[pLaneIdx];
+  if (lane === playerLaneName) {
+    return SLOTS_AHEAD_OF_PLAYER;
+  }
+  if (isFarLaneWhenOnShoulder(lane, pLaneIdx)) {
+    return SLOTS_FAR_LANE; // 4 cars filling the far lane continuously
+  }
+  return SLOTS_ADJACENT_LANE; // 3 cars leaving the merge pocket open in the adjacent lane
+}
+
+const TXT = {
+  en: {
+    points: 'POINTS',
+    start: 'Start',
+    title: 'Continuous road pilot',
+    intro: 'Complete the route with as many points as possible. Use the arrow keys or the control pad.',
+    hint: 'You can navigate using the mouse or the keyboard arrow keys.',
+    finePrefix: 'FINE: −',
+    done: 'Pilot complete',
+    download: 'Download JSON Data',
+    restart: 'Restart'
+  },
+  he: {
+    points: 'נקודות',
+    start: 'התחלה',
+    title: 'פיילוט כביש רציף',
+    intro: 'המטרה היא לסיים את המסלול עם מספר הנקודות הגבוה ביותר. ניתן להשתמש במקשי החצים או בלוח שעל המסך.',
+    hint: 'ניתן לנווט באמצעות העכבר או חיצי המקלדת.',
+    finePrefix: 'קנס: −',
+    done: 'הפיילוט הסתיים',
+    download: 'הורדת נתונים (JSON)',
+    restart: 'הפעלה מחדש'
+  }
+};
+
+const VERSION = 'V_5';
+const $ = id => document.getElementById(id);
+// Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
+const isJamTrial = t => t >= CFG.jamStartTrial;
+// In test mode the counts come from the experimenter panel; in real runs from CFG.countsFull.
+const isManual = () => CFG.testMode && SETTINGS.runMode === 'manual';
+const activeCounts = () => CFG.testMode ? SETTINGS.counts : CFG.countsFull;
+const totalTrials = () => isManual() ? Infinity : Object.values(activeCounts()).reduce((a, b) => a + b, 0);
+const PHASE_LABEL = { baseline: 'Baseline', social_exposure: 'Exposure', exploit: 'Exploit', deterrence: 'Deterrence' };
+
+const LANES = ['leftShoulder', 'left', 'right', 'shoulder'];
+let playerLaneIdx = 2;
+let playerScreenY = CFG.playerNormY;
+
+let lang = 'en';
+let trial = 0;
+let score = CFG.starting;
+let locked = true;
+let running = false;
+let finished = false;
+let copycatRunning = false;
+let copycatVisible = false;
+let activeCopycatTrial = null;
+// Per-trial plan, fixed at the moment the trial is first prepared, so that panel changes made
+// mid-animation can never desync the traffic set-up from the trial's phase.
+const trialPhase = {};
+const trialCopycat = {};
+const copycatGates = {};   // trial -> { safe, onSafe }
+const copycatInfo = {};    // trial -> { id, fromLane, toLane }
+const copycatPresses = {}; // trial -> key presses made while the demo was running
+let socialCondition = 'experimental';
+let deterrenceCondition = Math.random() < 0.5 ? 'high' : 'low';
+let shoulderMode = 'stay';
+let records = [];
+let worldOffset = 35400;
+let trialStarted = 0;
+let lastSceneryWorldY = 0;
+
+let trafficCars = [];
+let rearCars = [];
+const CAR_COLORS = ['#d9534f', '#e0a72e', '#7a69dc', '#49a66f', '#c9649b', '#39a7b8', '#d97a2b', '#5c7cfa'];
+
+const session = 'P' + Date.now().toString(36).toUpperCase();
+
+// ---- URL parameters (used by the hosting platform: participant ID + condition assignment) ----
+const URLP = new URLSearchParams(location.search);
+const participantId = URLP.get('PROLIFIC_PID') || URLP.get('pid') || URLP.get('participant') || '';
+let assignmentSource = 'test_panel';
+
+// ---- Logging state ----
+let experimentStartPerf = 0;
+let experimentStartIso = '';
+let events = [];                 // tab visibility / window focus events
+let trialHiddenCount = 0;        // times the tab was hidden during the current trial
+let trialBlurCount = 0;          // times the window lost focus during the current trial
+
+function logEvent(type) {
+  if (!experimentStartPerf) return;
+  events.push({ type, trial, t_ms: Math.round(performance.now() - experimentStartPerf), iso: new Date().toISOString() });
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) trialHiddenCount++;
+  logEvent(document.hidden ? 'tab_hidden' : 'tab_visible');
+});
+window.addEventListener('blur', () => { trialBlurCount++; logEvent('window_blur'); });
+window.addEventListener('focus', () => logEvent('window_focus'));
+
+// Fields shared by every trial record.
+function baseRecord() {
+  return {
+    version: VERSION,
+    session,
+    participant_id: participantId,
+    tag: playerTag,
+    social_condition: socialCondition,
+    deterrence_condition: deterrenceCondition,
+    shoulder_mode: shoulderMode,
+    run_mode: CFG.testMode ? SETTINGS.runMode : 'real',
+    fine_override: CFG.testMode ? SETTINGS.fineOverride : 'random',
+    trial,
+    phase: phaseOf(trial),
+    jam: isJamTrial(trial),
+    copycat_shown: !!copycatInfo[trial],
+    copycat_id: copycatInfo[trial] ? copycatInfo[trial].id : null,
+    copycat_from_lane: copycatInfo[trial] ? copycatInfo[trial].fromLane : null,
+    copycat_to_lane: copycatInfo[trial] ? copycatInfo[trial].toLane : null,
+    input_during_copycat: copycatPresses[trial] || 0,
+    tab_hidden_count: trialHiddenCount,
+    window_blur_count: trialBlurCount,
+    iso_time: new Date().toISOString(),
+    t_ms: Math.round(performance.now() - experimentStartPerf)
+  };
+}
+
+// Condition assignment for real (non-test) runs.
+// Priority: URL parameters set by the hosting platform (lets the server balance the 2x2 cells),
+// otherwise one of the four cells is drawn with equal probability.
+function assignConditionsFromUrlOrRandom() {
+  const s = URLP.get('social'), d = URLP.get('det'), m = URLP.get('shoulder');
+  const validS = ['experimental', 'control'], validD = ['high', 'low'], validM = ['stay', 'merge'];
+  if (validS.includes(s) && validD.includes(d)) {
+    socialCondition = s;
+    deterrenceCondition = d;
+    assignmentSource = 'url';
+  } else {
+    const cells = [['experimental', 'high'], ['experimental', 'low'], ['control', 'high'], ['control', 'low']];
+    [socialCondition, deterrenceCondition] = cells[Math.floor(Math.random() * cells.length)];
+    assignmentSource = 'random_cell';
+  }
+  shoulderMode = validM.includes(m) ? m : 'stay';
+}
+const usedIds = new Set();
+
+function generateUniqueRoofId() {
+  if (usedIds.size > 750) usedIds.clear();
+  let id;
+  do {
+    id = '#' + Math.floor(100 + Math.random() * 900);
+  } while (usedIds.has(id));
+  usedIds.add(id);
+  return id;
+}
+
+const playerTag = generateUniqueRoofId();
+
+function buildCarAnatomy(roofIdText = '') {
+  const formattedId = roofIdText.startsWith('#') ? roofIdText : '#' + roofIdText;
+  return `
+    <div class="car-chassis">
+      <div class="mirror left"></div>
+      <div class="mirror right"></div>
+      <div class="headlight left"></div>
+      <div class="headlight right"></div>
+      <div class="signal front-left"></div>
+      <div class="signal front-right"></div>
+      <div class="windshield"></div>
+      <div class="roof"><span class="roof-id">${formattedId}</span></div>
+      <div class="rear-window"></div>
+      <div class="brakelight left"></div>
+      <div class="brakelight right"></div>
+      <div class="signal rear-left"></div>
+      <div class="signal rear-right"></div>
+    </div>
+  `;
+}
+
+$('player').innerHTML = buildCarAnatomy(playerTag);
+$('world').style.transform = `translateY(${worldOffset}px)`;
+
+
+const buttons = [...document.querySelectorAll('.key')];
+
+function laneX(lane) {
+  if (lane === 'leftShoulder') return 16.5;
+  if (lane === 'left') return 36.5;
+  if (lane === 'right') return 63.5;
+  if (lane === 'shoulder') return 83.5;
+  return 63.5;
+}
+
+function screenToWorldY(screenY) {
+  return screenY - (-36000) - worldOffset;
+}
+function worldToScreenY(worldY) {
+  return worldY + (-36000) + worldOffset;
+}
+
+function rand(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+function randInt(min, max) {
+  return Math.floor(min + Math.random() * (max - min + 1));
+}
+
+function animateCarTo(car, targetY, durationMs, easing = 'cubic-bezier(.24,.72,.24,1)', brakeAtRatio = 0.74) {
+  if (!car || !car.el) return;
+  car.y = targetY;
+  void car.el.offsetHeight;
+  car.el.classList.remove('braking');
+  car.el.style.transition = `top ${durationMs}ms ${easing}, left 0.52s cubic-bezier(.22,.8,.25,1)`;
+  car.el.style.top = targetY + 'px';
+
+  if (brakeAtRatio > 0 && targetY > -80 && targetY < 520) {
+    setTimeout(() => {
+      if (car.el && !car.removed) car.el.classList.add('braking');
+    }, Math.round(durationMs * brakeAtRatio));
+  }
+}
+
+function getScenerySVG(type) {
+  if (type === 'tree') {
+    return `<svg width="38" height="38" viewBox="0 0 46 46">
+      <circle cx="24" cy="25" r="18" fill="#0d170c" opacity="0.45"/>
+      <circle cx="22" cy="22" r="16" fill="#2d4c28" stroke="#1e351a" stroke-width="1.5"/>
+      <circle cx="17" cy="18" r="10" fill="#3b6234"/>
+      <circle cx="27" cy="25" r="9" fill="#34572e"/>
+      <circle cx="20" cy="16" r="5" fill="#4c7a43"/>
+    </svg>`;
+  }
+  if (type === 'bush') {
+    return `<svg width="26" height="26" viewBox="0 0 32 32">
+      <circle cx="17" cy="18" r="11" fill="#0d170c" opacity="0.35"/>
+      <circle cx="15" cy="16" r="10" fill="#355830"/>
+      <circle cx="20" cy="14" r="7" fill="#446e3d"/>
+    </svg>`;
+  }
+  if (type === 'benchL' || type === 'benchR') {
+    return `<svg width="20" height="38" viewBox="0 0 24 44">
+      <rect x="4" y="4" width="16" height="36" rx="3" fill="#00000055"/>
+      <rect x="4" y="3" width="15" height="4" rx="1.5" fill="#4a525a"/>
+      <rect x="4" y="35" width="15" height="4" rx="1.5" fill="#4a525a"/>
+      <rect x="5" y="5" width="4" height="32" rx="1" fill="#9c622d" stroke="#5e3a19" stroke-width="0.8"/>
+      <rect x="10" y="5" width="4" height="32" rx="1" fill="#b37338" stroke="#5e3a19" stroke-width="0.8"/>
+      <rect x="15" y="5" width="4" height="32" rx="1" fill="#8c5828" stroke="#5e3a19" stroke-width="0.8"/>
+    </svg>`;
+  }
+  if (type === 'trash') {
+    return `<svg width="20" height="20" viewBox="0 0 22 22">
+      <circle cx="12" cy="13" r="8" fill="#00000060"/>
+      <rect x="2" y="9" width="18" height="4" rx="1.5" fill="#394149"/>
+      <circle cx="11" cy="11" r="7.5" fill="#525c66" stroke="#2b3137" stroke-width="1.5"/>
+      <circle cx="11" cy="11" r="5" fill="#67737f" stroke="#3d454d" stroke-width="1"/>
+      <line x1="7" y1="11" x2="15" y2="11" stroke="#2b3137" stroke-width="1.5"/>
+    </svg>`;
+  }
+  return '';
+}
+
+function seedSceneryUpTo(minWorldY) {
+  const objects = $('objects');
+  while (lastSceneryWorldY > minWorldY) {
+    lastSceneryWorldY -= 64;
+    const y = lastSceneryWorldY;
+    const stepIdx = Math.abs(Math.round(y / 64));
+
+    const pL = document.createElement('div');
+    pL.className = 'guard-postL';
+    pL.style.top = y + 'px';
+    objects.appendChild(pL);
+
+    const pR = document.createElement('div');
+    pR.className = 'guard-postR';
+    pR.style.top = y + 'px';
+    objects.appendChild(pR);
+
+    if (stepIdx % 4 === 0) {
+      const bL = document.createElement('div');
+      bL.className = 'scenery';
+      bL.innerHTML = getScenerySVG('benchL');
+      bL.style.left = '5.2%';
+      bL.style.top = (y - 8) + 'px';
+      objects.appendChild(bL);
+
+      const tL = document.createElement('div');
+      tL.className = 'scenery';
+      tL.innerHTML = getScenerySVG('trash');
+      tL.style.left = '5.3%';
+      tL.style.top = (y + 30) + 'px';
+      objects.appendChild(tL);
+
+      const bR = document.createElement('div');
+      bR.className = 'scenery';
+      bR.innerHTML = getScenerySVG('benchR');
+      bR.style.left = '92.0%';
+      bR.style.top = (y + 12) + 'px';
+      objects.appendChild(bR);
+
+      const tR = document.createElement('div');
+      tR.className = 'scenery';
+      tR.innerHTML = getScenerySVG('trash');
+      tR.style.left = '92.1%';
+      tR.style.top = (y - 12) + 'px';
+      objects.appendChild(tR);
+    }
+
+    if (stepIdx % 2 === 1 && Math.random() < 0.75) {
+      const fL = document.createElement('div');
+      fL.className = 'scenery';
+      fL.innerHTML = getScenerySVG(Math.random() < 0.55 ? 'tree' : 'bush');
+      fL.style.left = '0.2%';
+      fL.style.top = (y + randInt(-14, 14)) + 'px';
+      objects.appendChild(fL);
+    }
+    if (stepIdx % 2 === 0 && Math.random() < 0.75) {
+      const fR = document.createElement('div');
+      fR.className = 'scenery';
+      fR.innerHTML = getScenerySVG(Math.random() < 0.55 ? 'tree' : 'bush');
+      fR.style.left = '95.8%';
+      fR.style.top = (y + randInt(-14, 14)) + 'px';
+      objects.appendChild(fR);
+    }
+  }
+}
+
+function planTrial(t) {
+  if (t in trialPhase) return;
+  if (!isManual() && t > totalTrials()) return;
+  trialPhase[t] = computePhase(t);
+  trialCopycat[t] = (trialPhase[t] === 'social_exposure' && socialCondition === 'experimental');
+}
+function isCopycatTrial(t) {
+  if (t in trialCopycat) return trialCopycat[t];
+  return phaseOf(t) === 'social_exposure' && socialCondition === 'experimental';
+}
+function phaseOf(t) {
+  return trialPhase[t] || computePhase(t);
+}
+function computePhase(t) {
+  if (isManual()) return SETTINGS.manualPhase;
+  const c = activeCounts();
+  if (t <= c.baseline) return 'baseline';
+  if (t <= c.baseline + c.socialExposure) return 'social_exposure';
+  if (t <= c.baseline + c.socialExposure + c.exploit) return 'exploit';
+  return 'deterrence';
+}
+
+function setLang(v) {
+  lang = v;
+  if (CFG.testMode) { SETTINGS.lang = v; saveSettings(); }
+  document.documentElement.lang = v;
+  document.documentElement.dir = v === 'he' ? 'rtl' : 'ltr';
+  $('pointsLabel').textContent = TXT[v].points;
+  $('title').textContent = TXT[v].title;
+  $('intro').textContent = TXT[v].intro;
+  $('hint').textContent = TXT[v].hint;
+  $('start').textContent = TXT[v].start;
+  $('en').classList.toggle('active-lang', v === 'en');
+  $('he').classList.toggle('active-lang', v === 'he');
+  $('start').classList.remove('hidden');
+}
+
+$('en').onclick = () => setLang('en');
+$('he').onclick = () => setLang('he');
+
+$('start').onclick = () => {
+  if (CFG.testMode) {
+    // Conditions come from the experimenter panel (already applied to the globals).
+    assignmentSource = 'experimenter_panel';
+  } else {
+    assignConditionsFromUrlOrRandom();
+  }
+  score = CFG.starting;
+  $('score').textContent = score;
+  running = true;
+  experimentStartPerf = performance.now();
+  experimentStartIso = new Date().toISOString();
+  $('overlay').classList.add('hidden');
+  lastSceneryWorldY = screenToWorldY(560);
+  seedSceneryUpTo(screenToWorldY(-1400));
+  if (typeof renderDev === 'function') renderDev();
+
+  // If the jam is already active on trial 1 (jam start set to 1), bring the traffic in before the first decision.
+  planTrial(1);
+  if (isJamTrial(1)) {
+    advanceTrafficForStep(900, 1, 'normative_straight', playerLaneIdx);
+    setTimeout(nextDecision, 950);
+  } else {
+    nextDecision();
+  }
+};
+
+// ==========================================
+// 4. STAGGERED SURROUNDING TRAFFIC ENGINE (v25 - 4-Car Far Lane & Single-Rear-Car Invariant)
+// ==========================================
+function spawnTrafficCar(screenY, lane, customRoofId = null, colorOverride = null, isRear = false) {
+  const roofId = customRoofId || generateUniqueRoofId();
+  const d = document.createElement('div');
+  d.className = 'car npc braking';
+  d.style.transition = 'none';
+  d.style.left = laneX(lane) + '%';
+  d.style.top = screenY + 'px';
+  d.style.setProperty('--car-color', colorOverride || rand(CAR_COLORS));
+  d.innerHTML = buildCarAnatomy(roofId);
+  $('trafficLayer').appendChild(d);
+  void d.offsetHeight;
+
+  const carObj = {
+    el: d,
+    lane,
+    y: screenY,
+    roofId,
+    jitterY: randInt(-2, 2),
+    isCopycat: false,
+    removed: false
+  };
+  if (isRear) rearCars.push(carObj);
+  else trafficCars.push(carObj);
+  return carObj;
+}
+
+function getCopycatLaneForPlayer(pLaneIdx) {
+  return pLaneIdx >= 2 ? 'left' : 'right';
+}
+
+function getRearSlotForLane(lane, pLaneIdx) {
+  const playerLaneName = LANES[pLaneIdx];
+  if (lane === playerLaneName) return CFG.rearSlotPlayerY;
+  if (isFarLaneWhenOnShoulder(lane, pLaneIdx)) return CFG.rearSlotFarY;
+  return CFG.rearSlotOtherY;
+}
+
+function evictRearCarsInLane(lane, durationMs) {
+  const departing = rearCars.filter(car => car.lane === lane && !car.removed);
+  rearCars = rearCars.filter(car => car.lane !== lane || car.removed);
+  departing.forEach(car => {
+    car.departing = true; // cancels any pending rear-slot animation scheduled earlier in this step
+    animateCarTo(car, 600, durationMs, 'cubic-bezier(.24,.72,.24,1)', 0);
+    setTimeout(() => {
+      if (car.el) car.el.remove();
+      car.removed = true;
+    }, durationMs + 50);
+  });
+}
+
+function updateRearTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlayerLaneIdx, targetCopycatLane) {
+  if (!isJamTrial(upcomingTrial)) return;
+
+  const isShoulderManeuver = (
+    maneuverType === 'enter_shoulder' ||
+    maneuverType === 'stay_shoulder' ||
+    maneuverType === 'overtake_and_merge'
+  );
+
+  ['right', 'left'].forEach(lane => {
+    const baseRearY = getRearSlotForLane(lane, newPlayerLaneIdx);
+    const laneSlots = getLaneSlots(lane, newPlayerLaneIdx);
+    const desiredFrontCount = laneSlots.length; // 3 for player/adjacent lane, 4 for far lane when on shoulder
+    const currentFrontCount = trafficCars.filter(car => car.lane === lane && !car.removed).length;
+
+    // Does this lane drop an overtaken front car into rearCars on this step?
+    // When 1 new horizon car is unshifted onto currentFrontCount, an overtaken car drops into rearCars
+    // ONLY if (currentFrontCount + 1) > desiredFrontCount!
+    // (e.g., on enter_shoulder in the far lane, currentFrontCount is 3 and desiredFrontCount is 4,
+    // so 3 + 1 = 4 cars stay in front to fill the gap, and the existing rear car stays in rearCars!)
+    const laneReceivesOvertakenCar =
+      isShoulderManeuver &&
+      (lane !== targetCopycatLane) &&
+      (currentFrontCount > 0) &&
+      (currentFrontCount + 1 > desiredFrontCount);
+
+    if (laneReceivesOvertakenCar) {
+      evictRearCarsInLane(lane, durationMs);
+      return;
+    }
+
+    let laneRear = rearCars.filter(c => c.lane === lane && !c.removed);
+
+    if (laneRear.length === 0) {
+      const rc = spawnTrafficCar(595, lane, null, null, true);
+      const targetY = baseRearY + rc.jitterY;
+      setTimeout(() => {
+        if (rc.departing || rc.removed) return;
+        animateCarTo(rc, targetY, Math.round(durationMs * 0.92), 'cubic-bezier(.22,.75,.24,1)', 0.78);
+      }, 90);
+      return;
+    }
+
+    if (laneRear.length > 1) {
+      for (let i = 1; i < laneRear.length; i++) {
+        const extra = laneRear[i];
+        extra.removed = true;
+        if (extra.el) extra.el.remove();
+      }
+      rearCars = rearCars.filter(c => !c.removed);
+    }
+
+    const activeRear = laneRear[0];
+    const restY = baseRearY + activeRear.jitterY;
+
+    if (maneuverType === 'brake') {
+      animateCarTo(activeRear, restY + 10, 220, 'ease-out', 1);
+      setTimeout(() => {
+        if (activeRear.departing || activeRear.removed) return;
+        animateCarTo(activeRear, restY, 260, 'ease-out', 1);
+      }, 230);
+      return;
+    }
+
+    const halfDur = Math.round(durationMs * 0.46);
+    const settleDur = Math.round(durationMs * 0.48);
+    animateCarTo(activeRear, restY - 14, halfDur, 'cubic-bezier(.22,.75,.25,1)', 0);
+    setTimeout(() => {
+      if (activeRear.departing || activeRear.removed) return;
+      animateCarTo(activeRear, restY, settleDur, 'cubic-bezier(.25,.72,.25,1)', 0.65);
+    }, halfDur);
+  });
+}
+
+function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlayerLaneIdx) {
+  const isUpcomingCopycatTrial = isCopycatTrial(upcomingTrial);
+  const targetCopycatLane = isUpcomingCopycatTrial ? getCopycatLaneForPlayer(newPlayerLaneIdx) : null;
+
+  updateRearTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlayerLaneIdx, targetCopycatLane);
+
+  ['right', 'left'].forEach(lane => {
+    trafficCars.forEach(c => {
+      if (c.lane === lane) c.isCopycat = false;
+    });
+
+    let laneCars = trafficCars
+      .filter(car => car.lane === lane && !car.removed)
+      .sort((a, b) => a.y - b.y);
+
+    if (!isJamTrial(upcomingTrial)) {
+      return;
+    }
+
+    const laneSlots = getLaneSlots(lane, newPlayerLaneIdx);
+    const desiredCount = laneSlots.length; // 3 (adjacent/player lane) or 4 (far lane when player is on shoulder)
+
+    // CASE 0: Emerging into the staggered traffic jam on Trial 2 -> Trial 3
+    if (laneCars.length === 0) {
+      for (let i = 0; i < desiredCount; i++) {
+        const startY = -153 - (desiredCount - 1 - i) * 106;
+        laneCars.push(spawnTrafficCar(startY, lane));
+      }
+      laneCars.forEach((car, idx) => {
+        const destY = laneSlots[idx] + car.jitterY;
+        animateCarTo(car, destY, durationMs, 'cubic-bezier(.20,.76,.24,1)', 0.76);
+      });
+      return;
+    }
+
+    // CASE 1: Entering a Social Exposure Trial in the Opposite Lane (targetCopycatLane)
+    if (lane === targetCopycatLane) {
+      while (laneCars.length < 3) {
+        const topY = laneCars.length > 0 ? laneCars[0].y - 106 : -140;
+        laneCars.unshift(spawnTrafficCar(topY, lane));
+      }
+      // If laneCars already had 4 cars (because player was already on the opposite shoulder),
+      // drop the 4th car into rearCars so the 4-car Copycat platoon fits cleanly!
+      while (laneCars.length > 3) {
+        const tailCar = laneCars.pop();
+        trafficCars = trafficCars.filter(c => c !== tailCar);
+        evictRearCarsInLane(lane, durationMs);
+        rearCars.push(tailCar);
+        const baseRearY = getRearSlotForLane(lane, newPlayerLaneIdx);
+        animateCarTo(tailCar, baseRearY + tailCar.jitterY, durationMs, 'cubic-bezier(.24,.72,.24,1)', 0.78);
+      }
+
+      const newLead = spawnTrafficCar(-140, lane);
+      laneCars.unshift(newLead);
+
+      const socialTargets = [SLOTS_ADJACENT_LANE[0], SLOTS_ADJACENT_LANE[1], SLOTS_ADJACENT_LANE[2], 334];
+      laneCars[1].isCopycat = true;
+
+      laneCars.forEach((car, idx) => {
+        const destY = idx < 4 ? socialTargets[idx] : 600 + (idx - 4) * 106;
+        animateCarTo(car, destY, Math.round(durationMs * 0.90), 'cubic-bezier(.25,.72,.25,1)', destY < 400 ? 0.70 : 0);
+      });
+      return;
+    }
+
+    // CASE 2: Player Exits to Shoulder OR Continues on Shoulder OR Overtakes & Merges Back
+    if (maneuverType === 'enter_shoulder' || maneuverType === 'stay_shoulder' || maneuverType === 'overtake_and_merge') {
+      while (laneCars.length < 3) {
+        const topY = laneCars.length > 0 ? laneCars[0].y - 106 : -140;
+        laneCars.unshift(spawnTrafficCar(topY, lane));
+      }
+      const newHorizonCar = spawnTrafficCar(-140, lane);
+      laneCars.unshift(newHorizonCar);
+
+      const delayMs = (maneuverType === 'enter_shoulder' || maneuverType === 'overtake_and_merge') ? 130 : 0;
+      const moveDur = durationMs - delayMs;
+      const baseRearY = getRearSlotForLane(lane, newPlayerLaneIdx);
+
+      // Notice:
+      // - In the ADJACENT lane (desiredCount === 3), laneCars[3] is overtaken and moves to rearCars, leaving 3 cars ahead (with merge gap open!).
+      // - In the FAR lane (desiredCount === 4):
+      //   * On enter_shoulder (had 3 cars -> now 4 cars), all 4 cars stay in trafficCars at [12, 120, 228, 336], filling the far-lane gap!
+      //   * On stay_shoulder (had 4 cars -> now 5 cars), laneCars[4] moves to rearCars and 4 cars stay at [12, 120, 228, 336]!
+      const overtakenCar = laneCars[desiredCount];
+      if (overtakenCar) {
+        trafficCars = trafficCars.filter(c => c !== overtakenCar);
+        evictRearCarsInLane(lane, moveDur);
+        rearCars.push(overtakenCar);
+        setTimeout(() => {
+          animateCarTo(overtakenCar, baseRearY + overtakenCar.jitterY, moveDur, 'cubic-bezier(.24,.72,.24,1)', 0.78);
+        }, delayMs);
+      }
+
+      for (let idx = 0; idx < desiredCount; idx++) {
+        const car = laneCars[idx];
+        if (!car) continue;
+        const destY = laneSlots[idx] + car.jitterY;
+        setTimeout(() => {
+          animateCarTo(car, destY, moveDur, 'cubic-bezier(.24,.72,.24,1)', 0.74);
+        }, delayMs);
+      }
+
+      for (let idx = desiredCount + 1; idx < laneCars.length; idx++) {
+        const extraCar = laneCars[idx];
+        trafficCars = trafficCars.filter(c => c !== extraCar);
+        animateCarTo(extraCar, 600, moveDur, 'ease-in', 0);
+        setTimeout(() => {
+          if (extraCar.el) extraCar.el.remove();
+          extraCar.removed = true;
+        }, moveDur + 50);
+      }
+      return;
+    }
+
+    // CASE 3: Normative Straight, Normative Lane Change, Merge Back from Shoulder, or Brake
+    while (laneCars.length < desiredCount) {
+      const topY = laneCars.length > 0 ? laneCars[0].y - 106 : -140;
+      laneCars.unshift(spawnTrafficCar(topY, lane));
+    }
+
+    // If the player is merging back from the shoulder into the adjacent normative lane,
+    // the FAR normative lane previously had 4 cars [12, 120, 228, 336] and now needs 3 cars [26, 128, 230]
+    // so that its side-pocket at 338px opens up for the next trial!
+    // We smoothly advance its front-most car (laneCars[0] at 12px) out the top (-135px),
+    // while laneCars[1..3] advance forward from [120, 228, 336] into [26, 128, 230]!
+    if (laneCars.length > desiredCount) {
+      const exitingFrontCount = laneCars.length - desiredCount;
+      for (let i = 0; i < exitingFrontCount; i++) {
+        const frontExitCar = laneCars.shift();
+        trafficCars = trafficCars.filter(c => c !== frontExitCar);
+        animateCarTo(frontExitCar, -145 - i * 105, Math.round(durationMs * 0.82), 'cubic-bezier(.24,.72,.24,1)', 0);
+        setTimeout(() => {
+          if (frontExitCar.el) frontExitCar.el.remove();
+          frontExitCar.removed = true;
+        }, durationMs + 50);
+      }
+    }
+
+    const pullForwardPx = (maneuverType === 'merge_back') ? 22 : (maneuverType === 'brake' ? 8 : 18);
+    const halfDur = Math.round(durationMs * 0.44);
+    const settleDur = Math.round(durationMs * 0.48);
+
+    laneCars.forEach((car, idx) => {
+      const restY = laneSlots[idx] + car.jitterY;
+      const surgeY = restY - pullForwardPx;
+      const stagger = idx * 45;
+
+      setTimeout(() => {
+        animateCarTo(car, surgeY, halfDur, 'cubic-bezier(.22,.75,.25,1)', 0);
+      }, stagger);
+
+      setTimeout(() => {
+        animateCarTo(car, restY, settleDur, 'cubic-bezier(.25,.72,.25,1)', 0.65);
+      }, stagger + halfDur);
+    });
+  });
+}
+
+// ==========================================
+// 5. TWO-STAGE COPYCAT MANEUVER (Slow Cut-Out -> Straighten -> Fast Acceleration)
+// ==========================================
+// Starts the demonstration for trial t. It is launched at the END of the participant's previous move
+// (the copycat platoon has just been set up), so the participant watches it during the feedback
+// instead of waiting afterwards. nextDecision() keeps the keys locked until the gate is "safe".
+function startCopycatDemo(t) {
+  const gate = { safe: false, onSafe: null };
+  copycatGates[t] = gate;
+  copycatRunning = true;
+  activeCopycatTrial = t;
+  runCopycatDemonstration(t, () => {
+    if (gate.safe) return;
+    gate.safe = true;
+    copycatRunning = false;
+    if (gate.onSafe) gate.onSafe();
+  });
+}
+
+function maybeStartCopycatFor(t) {
+  if (!isManual() && t > totalTrials()) return;
+  planTrial(t);
+  if (isCopycatTrial(t) && !copycatGates[t]) startCopycatDemo(t);
+}
+
+function runCopycatDemonstration(t, onSafe) {
+  const copycat = trafficCars.find(c => c.isCopycat && !c.removed);
+  if (!copycat || !copycat.el) {
+    onSafe();   // no platoon (e.g. exposure chosen before the jam started): logged as copycat_shown = false
+    return;
+  }
+  copycat.isCopycat = false; // so a following exposure trial cannot pick this same car again
+
+  const T = CFG.copycat;
+  const copycatLane = copycat.lane;
+  const targetShoulder = (copycatLane === 'left') ? 'leftShoulder' : 'shoulder';
+  const blinkClass = (copycatLane === 'left') ? 'blink-left' : 'blink-right';
+  const steerClass = (copycatLane === 'left') ? 'steer-left' : 'steer-right';
+  copycatInfo[t] = { id: copycat.roofId, fromLane: copycatLane, toLane: targetShoulder };
+  copycatVisible = true;
+
+  const followers = trafficCars
+    .filter(c => c.lane === copycatLane && !c.removed && c !== copycat && c.y > copycat.y)
+    .sort((a, b) => a.y - b.y);
+
+  setTimeout(() => {
+    if (!copycat.el) { onSafe(); return; }
+
+    copycat.el.classList.add(blinkClass);
+
+    setTimeout(() => {
+      if (!copycat.el) { onSafe(); return; }
+      copycat.el.classList.remove('braking');
+      copycat.el.classList.add(steerClass);
+      copycat.el.style.transition = 'left 1.08s cubic-bezier(.25,.78,.25,1), top 1.15s cubic-bezier(.32,.64,.35,1)';
+      copycat.el.style.left = laneX(targetShoulder) + '%';
+      copycat.lane = targetShoulder;
+      copycat.y = 80;
+      copycat.el.style.top = '80px';
+
+      setTimeout(() => {
+        // If the player is currently on the opposite shoulder, the Copycat's lane is the FAR lane,
+        // so we also advance its rear car into Slot 3 (336px) to keep the far lane completely full!
+        const copycatLaneIsFar = isFarLaneWhenOnShoulder(copycatLane, playerLaneIdx);
+        const targetFillSlots = copycatLaneIsFar
+          ? [SLOTS_FAR_LANE[1], SLOTS_FAR_LANE[2]]
+          : [SLOTS_ADJACENT_LANE[1], SLOTS_ADJACENT_LANE[2]];
+
+        followers.forEach((follower, idx) => {
+          if (idx >= targetFillSlots.length || !follower.el) return;
+          setTimeout(() => {
+            animateCarTo(follower, targetFillSlots[idx] + follower.jitterY, 850, 'cubic-bezier(.25,.72,.25,1)', 0.72);
+          }, idx * 150);
+        });
+
+        if (copycatLaneIsFar) {
+          const laneRear = rearCars.filter(c => c.lane === copycatLane && !c.removed);
+          if (laneRear.length > 0) {
+            const promotedRear = laneRear[0];
+            rearCars = rearCars.filter(c => c !== promotedRear);
+            trafficCars.push(promotedRear);
+            setTimeout(() => {
+              animateCarTo(promotedRear, SLOTS_FAR_LANE[3] + promotedRear.jitterY, 850, 'cubic-bezier(.25,.72,.25,1)', 0.72);
+            }, 300);
+
+            const replacementRear = spawnTrafficCar(595, copycatLane, null, null, true);
+            setTimeout(() => {
+              animateCarTo(replacementRear, CFG.rearSlotFarY + replacementRear.jitterY, 900, 'cubic-bezier(.22,.75,.24,1)', 0.78);
+            }, 340);
+          }
+        }
+      }, 620);
+
+      // Hand control back once the queue has closed the gap (followers settle ~1.85 s after the cut-out).
+      setTimeout(onSafe, T.unlockAfterCutMs);
+
+      setTimeout(() => {
+        if (!copycat.el) return;
+        copycat.el.classList.remove(steerClass);
+        copycat.el.style.transition = 'top 1.85s cubic-bezier(.38,.12,.22,1)';
+        copycat.y = -165;
+        copycat.el.style.top = '-165px';
+
+        setTimeout(() => {
+          if (copycat.el) copycat.el.classList.remove(blinkClass);
+        }, 320);
+
+        setTimeout(() => {
+          if (copycat.el) copycat.el.remove();
+          copycat.removed = true;
+          copycatVisible = false;
+          trafficCars = trafficCars.filter(c => !c.removed);
+        }, 1900);
+      }, 1120);
+    }, T.blinkMs);
+  }, T.startDelayMs);
+}
+
+function pruneOffscreenWorld() {
+  document.querySelectorAll('.scenery, .guard-postL, .guard-postR').forEach(el => {
+    const y = parseFloat(el.style.top || 0);
+    if (worldToScreenY(y) > 680) el.remove();
+  });
+  trafficCars.forEach(c => {
+    if (c.y > 550 || c.y < -380) {
+      if (c.el) c.el.remove();
+      c.removed = true;
+    }
+  });
+  trafficCars = trafficCars.filter(c => !c.removed);
+
+  rearCars.forEach(c => {
+    if (c.y > 560 || c.y < -380) {
+      if (c.el) c.el.remove();
+      c.removed = true;
+    }
+  });
+  rearCars = rearCars.filter(c => !c.removed);
+}
+
+function setLocked(v) {
+  locked = v;
+  buttons.forEach(b => b.disabled = v);
+}
+
+function pulseScoreHud(type) {
+  const box = $('scoreBox');
+  const cls = type === 'gain' ? 'pulse-gain' : 'pulse-loss';
+  box.classList.remove('pulse-gain', 'pulse-loss');
+  void box.offsetWidth;
+  box.classList.add(cls);
+  setTimeout(() => box.classList.remove(cls), 380);
+}
+
+function showCenterExpandingFeedback(el, text, durationMs, newScoreVal, pulseType) {
+  el.textContent = text;
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.animation = `expandCenter ${durationMs}ms cubic-bezier(.18,.68,.28,1) forwards`;
+
+  score = newScoreVal;
+  $('score').textContent = score;
+  pulseScoreHud(pulseType);
+}
+
+function updateHud() {
+  if (!running) {
+    $('phase').textContent = '';
+    $('trial').textContent = '';
+    return;
+  }
+  const ph = phaseOf(trial);
+  // Phase names are shown only in test mode (they would reveal the design to participants).
+  $('phase').textContent = CFG.testMode ? 'TEST · ' + PHASE_LABEL[ph] + (isManual() ? ' · manual' : '') : '';
+  $('trial').textContent = isManual() ? `Trial ${trial}` : `Trial ${trial} / ${totalTrials()}`;
+}
+
+function nextDecision() {
+  trial++;
+  if (!isManual() && trial > totalTrials()) return finish();
+  planTrial(trial);
+  updateHud();
+
+  // Reset per-trial logging counters
+  trialHiddenCount = 0;
+  trialBlurCount = 0;
+
+  // Fallback: an exposure trial whose demo was not started during the previous move (e.g. trial 1).
+  if (isCopycatTrial(trial) && !copycatGates[trial]) startCopycatDemo(trial);
+
+  const gate = copycatGates[trial];
+  if (gate && !gate.safe) {
+    setLocked(true);
+    gate.onSafe = () => {
+      setLocked(false);
+      trialStarted = performance.now();
+      renderDevStatus();
+    };
+  } else {
+    setLocked(false);
+    trialStarted = performance.now();
+  }
+  renderDevStatus();
+}
+
+function rollFine() {
+  const rule = CFG[deterrenceCondition];
+  if (CFG.testMode && SETTINGS.fineOverride === 'always') return rule.fine;
+  if (CFG.testMode && SETTINGS.fineOverride === 'never') return 0;
+  return Math.random() < rule.p ? rule.fine : 0;
+}
+
+function choose(key) {
+  if (!['ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowDown'].includes(key)) return;
+  if (locked) {
+    if (copycatRunning && activeCopycatTrial) {
+      copycatPresses[activeCopycatTrial] = (copycatPresses[activeCopycatTrial] || 0) + 1;
+    }
+    return;
+  }
+
+  setLocked(true);
+  const copycatVisibleAtChoice = copycatVisible;
+  planTrial(trial + 1); // fix the next trial's phase/copycat now, before traffic is set up for it
+  const rt = Math.round(performance.now() - trialStarted);
+  const p = $('player');
+  const phase = phaseOf(trial);
+
+  const laneBefore = LANES[playerLaneIdx];
+  const wasOnShoulder = (laneBefore === 'shoulder' || laneBefore === 'leftShoulder');
+
+  // ==========================================
+  // CASE A: DOWN ARROW -> ACTIVE BRAKING (-5 points, PLUS FINE IF STAYING ON SHOULDER IN DETERRENCE!)
+  // ==========================================
+  if (key === 'ArrowDown') {
+    p.classList.add('braking', 'hard-brake');
+    p.style.transition = 'top 0.22s ease-out';
+    p.style.top = (playerScreenY + 8) + 'px';
+    setTimeout(() => { p.style.top = playerScreenY + 'px'; }, 240);
+
+    seedSceneryUpTo(screenToWorldY(-1100));
+    advanceTrafficForStep(CFG.brakeMs, trial + 1, 'brake', playerLaneIdx);
+
+    worldOffset += CFG.brakeStepDist;
+    const w = $('world');
+    w.style.transition = `transform ${CFG.brakeMs}ms ease-out`;
+    requestAnimationFrame(() => {
+      w.style.transform = `translateY(${worldOffset}px)`;
+    });
+
+    setTimeout(() => {
+      p.classList.remove('hard-brake');
+      pruneOffscreenWorld();
+
+      // If player is braking while on the shoulder during deterrence phase, roll for shoulder fine!
+      let fine = 0;
+      const fineEligible = (wasOnShoulder && phase === 'deterrence');
+      if (fineEligible) fine = rollFine();
+
+      const scoreAfterBrake = Math.max(0, score - CFG.brakeCost);
+      const finalScore = Math.max(0, scoreAfterBrake - fine);
+
+      const brakeHoldMs = fine > 0 ? 1000 : 1150;
+      const fineHoldMs = 1350;
+
+      // Show braking cost (-5) in the center
+      showCenterExpandingFeedback($('loss'), '−' + CFG.brakeCost, brakeHoldMs, scoreAfterBrake, 'loss');
+
+      // If fined for remaining on the shoulder, show the fine 1 second later!
+      if (fine > 0) {
+        setTimeout(() => {
+          const fineLabel = TXT[lang].finePrefix + fine;
+          showCenterExpandingFeedback($('loss'), fineLabel, fineHoldMs, finalScore, 'loss');
+        }, 1000);
+      }
+
+      records.push({
+        ...baseRecord(),
+        key,
+        lane_before: laneBefore,
+        lane_after: laneBefore,
+        choice: 'brake',
+        maneuver_type: 'brake',
+        is_violation: wasOnShoulder,
+        violation_type: wasOnShoulder ? 'continuation' : 'none',
+        reward: -CFG.brakeCost,
+        fine_eligible: fineEligible,
+        fine,
+        score_after: finalScore,
+        copycat_visible_at_choice: copycatVisibleAtChoice,
+        rt
+      });
+      renderDevStatus();
+      maybeStartCopycatFor(trial + 1);
+
+      const nextTrialDelayMs = fine > 0 ? (1000 + fineHoldMs) : brakeHoldMs;
+      setTimeout(nextDecision, nextTrialDelayMs);
+    }, CFG.brakeMs);
+    return;
+  }
+
+  // ==========================================
+  // CASE B: TWO-STAGE COLLISION-FREE FORWARD & LATERAL NAVIGATION
+  // ==========================================
+  let newLaneIdx = playerLaneIdx;
+  if (key === 'ArrowLeft') newLaneIdx = Math.max(0, playerLaneIdx - 1);
+  if (key === 'ArrowRight') newLaneIdx = Math.min(LANES.length - 1, playerLaneIdx + 1);
+
+  const changedLane = (newLaneIdx !== playerLaneIdx);
+  const moveDir = newLaneIdx > playerLaneIdx ? 'right' : (newLaneIdx < playerLaneIdx ? 'left' : 'straight');
+  playerLaneIdx = newLaneIdx;
+  let laneAfter = LANES[playerLaneIdx];
+
+  const isShoulder = (laneAfter === 'shoulder' || laneAfter === 'leftShoulder');
+  const isOvertakeAndMergeMode = (isShoulder && shoulderMode === 'merge');
+
+  const isEnteringShoulder = (!wasOnShoulder && isShoulder && !isOvertakeAndMergeMode);
+  const isStayingOnShoulder = (wasOnShoulder && isShoulder && !isOvertakeAndMergeMode);
+  const isMergingBackToLane = (wasOnShoulder && !isShoulder);
+
+  let maneuverType = 'normative_straight';
+  if (isOvertakeAndMergeMode) maneuverType = 'overtake_and_merge';
+  else if (isEnteringShoulder) maneuverType = 'enter_shoulder';
+  else if (isStayingOnShoulder) maneuverType = 'stay_shoulder';
+  else if (isMergingBackToLane) maneuverType = 'merge_back';
+  else if (changedLane) maneuverType = 'normative_lane_change';
+
+  const violationType = isShoulder ? (wasOnShoulder ? 'continuation' : 'initiation') : 'none';
+
+  const reward = isShoulder
+    ? CFG.shoulderReward
+    : (isJamTrial(trial) ? CFG.jamNormativeReward : CFG.openRoadReward);
+
+  const stepDist = isShoulder ? CFG.shoulderStepDist : CFG.stepDist;
+  const isJammedNormative = (isJamTrial(trial) && !isShoulder);
+  const driveDuration = isShoulder
+    ? CFG.shoulderDriveMs
+    : (isJamTrial(trial) ? CFG.jamDriveMs : CFG.freeDriveMs);
+
+  const finalLaneIdxAfterStep = isOvertakeAndMergeMode
+    ? (laneAfter === 'shoulder' ? 2 : 1)
+    : playerLaneIdx;
+
+  const targetPlayerY = (isShoulder && !isOvertakeAndMergeMode && isJamTrial(trial + 1))
+    ? CFG.playerShoulderY
+    : CFG.playerNormY;
+
+  seedSceneryUpTo(screenToWorldY(-1100));
+
+  p.classList.remove('blink-left', 'blink-right', 'steer-left', 'steer-right');
+  const turnLeadMs = changedLane ? 120 : 0;
+
+  if (changedLane) {
+    p.classList.add(moveDir === 'left' ? 'blink-left' : 'blink-right');
+  }
+
+  setTimeout(() => {
+    p.classList.remove('braking');
+
+    if (isOvertakeAndMergeMode) {
+      const shoulderName = laneAfter;
+      const returnLaneIdx = finalLaneIdxAfterStep;
+      const returnLaneName = LANES[returnLaneIdx];
+      const returnDir = returnLaneIdx < playerLaneIdx ? 'left' : 'right';
+
+      p.style.transition = 'left 0.34s cubic-bezier(.22,.86,.24,1), top 0.48s cubic-bezier(.22,.76,.24,1)';
+      p.classList.add(moveDir === 'left' ? 'steer-left' : 'steer-right');
+      p.style.left = laneX(shoulderName) + '%';
+      p.style.top = '280px';
+
+      setTimeout(() => {
+        p.classList.remove('steer-left', 'steer-right', 'blink-left', 'blink-right');
+      }, 360);
+
+      setTimeout(() => {
+        p.classList.add(returnDir === 'left' ? 'blink-left' : 'blink-right');
+        p.classList.add(returnDir === 'left' ? 'steer-left' : 'steer-right');
+        p.style.top = CFG.playerNormY + 'px';
+        p.style.left = laneX(returnLaneName) + '%';
+        playerLaneIdx = returnLaneIdx;
+        playerScreenY = CFG.playerNormY;
+      }, Math.round(driveDuration * 0.60));
+
+      setTimeout(() => {
+        p.classList.remove('steer-left', 'steer-right');
+      }, Math.round(driveDuration * 0.88));
+    }
+    else if (isEnteringShoulder) {
+      p.style.transition = 'left 0.35s cubic-bezier(.22,.86,.24,1), top 0.66s cubic-bezier(.22,.76,.24,1)';
+      p.classList.add(moveDir === 'left' ? 'steer-left' : 'steer-right');
+      p.style.left = laneX(laneAfter) + '%';
+
+      setTimeout(() => {
+        p.style.top = targetPlayerY + 'px';
+        playerScreenY = targetPlayerY;
+      }, 150);
+
+      setTimeout(() => {
+        p.classList.remove('steer-left', 'steer-right');
+      }, 420);
+      setTimeout(() => {
+        p.classList.remove('blink-left', 'blink-right');
+      }, 640);
+    }
+    else if (isStayingOnShoulder) {
+      p.style.transition = 'left 0.42s ease, top 0.46s cubic-bezier(.22,.76,.24,1)';
+      p.style.top = (targetPlayerY - 14) + 'px';
+      playerScreenY = targetPlayerY;
+      setTimeout(() => {
+        p.style.top = targetPlayerY + 'px';
+      }, 460);
+    }
+    else if (isMergingBackToLane) {
+      p.style.transition = 'top 0.44s cubic-bezier(.25,.76,.25,1), left 0.42s cubic-bezier(.22,.82,.25,1)';
+      p.style.top = targetPlayerY + 'px';
+      playerScreenY = targetPlayerY;
+
+      setTimeout(() => {
+        p.classList.add(moveDir === 'left' ? 'steer-left' : 'steer-right');
+        p.style.left = laneX(laneAfter) + '%';
+      }, 410);
+
+      setTimeout(() => {
+        p.classList.remove('steer-left', 'steer-right');
+      }, 800);
+      setTimeout(() => {
+        p.classList.remove('blink-left', 'blink-right');
+      }, 860);
+    }
+    else if (changedLane) {
+      p.style.transition = 'left 0.45s cubic-bezier(.22,.82,.25,1), top 0.45s ease-out';
+      p.classList.add(moveDir === 'left' ? 'steer-left' : 'steer-right');
+      p.style.left = laneX(laneAfter) + '%';
+      p.style.top = (targetPlayerY - 12) + 'px';
+      playerScreenY = targetPlayerY;
+
+      setTimeout(() => {
+        p.classList.remove('steer-left', 'steer-right');
+        p.style.top = targetPlayerY + 'px';
+      }, 430);
+      setTimeout(() => {
+        p.classList.remove('blink-left', 'blink-right');
+      }, 620);
+    }
+    else {
+      p.style.transition = 'top 0.50s cubic-bezier(.22,.75,.25,1)';
+      p.style.top = (targetPlayerY - 20) + 'px';
+      playerScreenY = targetPlayerY;
+      setTimeout(() => {
+        p.style.top = targetPlayerY + 'px';
+      }, 520);
+    }
+
+    advanceTrafficForStep(driveDuration, trial + 1, maneuverType, finalLaneIdxAfterStep);
+
+    worldOffset += stepDist;
+    const w = $('world');
+    const base = $('roadbase');
+    base.classList.add('driving');
+    if (isShoulder) base.classList.add('fast');
+    else if (isJammedNormative) base.classList.add('crawl');
+
+    w.style.transition = `transform ${driveDuration}ms cubic-bezier(.22,.72,.22,1)`;
+    requestAnimationFrame(() => {
+      w.style.transform = `translateY(${worldOffset}px)`;
+    });
+
+    setTimeout(() => {
+      p.classList.remove('blink-left', 'blink-right', 'steer-left', 'steer-right');
+      p.classList.add('braking');
+    }, Math.round(driveDuration * 0.88));
+
+    setTimeout(() => {
+      base.classList.remove('driving', 'fast', 'crawl');
+      pruneOffscreenWorld();
+
+      let fine = 0;
+      const fineEligible = (isShoulder && phase === 'deterrence');
+      if (fineEligible) fine = rollFine();
+
+      const scoreAfterReward = score + reward;
+      const finalScore = Math.max(0, scoreAfterReward - fine);
+
+      const gainHoldMs = fine > 0 ? 1000 : 1150;
+      const fineHoldMs = 1350;
+
+      showCenterExpandingFeedback($('gain'), '+' + reward, gainHoldMs, scoreAfterReward, 'gain');
+
+      if (fine > 0) {
+        setTimeout(() => {
+          $('gain').style.animation = 'none';
+          $('gain').style.opacity = '0';
+          const fineLabel = TXT[lang].finePrefix + fine;
+          showCenterExpandingFeedback($('loss'), fineLabel, fineHoldMs, finalScore, 'loss');
+        }, 1000);
+      }
+
+      records.push({
+        ...baseRecord(),
+        key,
+        lane_before: laneBefore,
+        lane_after: LANES[playerLaneIdx],
+        choice: isShoulder ? laneAfter : (changedLane ? moveDir : 'straight'),
+        maneuver_type: maneuverType,
+        is_violation: isShoulder,
+        violation_type: violationType,
+        reward,
+        fine_eligible: fineEligible,
+        fine,
+        score_after: finalScore,
+        copycat_visible_at_choice: copycatVisibleAtChoice,
+        rt
+      });
+      renderDevStatus();
+      maybeStartCopycatFor(trial + 1);
+
+      const nextTrialDelayMs = fine > 0 ? (1000 + fineHoldMs) : gainHoldMs;
+      setTimeout(nextDecision, nextTrialDelayMs);
+    }, driveDuration);
+  }, turnLeadMs);
+}
+
+document.addEventListener('keydown', e => {
+  // Typing in the experimenter panel's number fields must not drive the car.
+  if (e.target && e.target.matches && e.target.matches('#devPanel input, #devPanel select')) return;
+  if (CFG.testMode && e.key === '`') { setPanelOpen(!document.body.classList.contains('dev-open')); return; }
+  if (e.key.startsWith('Arrow')) e.preventDefault();
+  // Ignore auto-repeat from a held key: every choice must be a fresh press
+  // (otherwise holding "up" produces near-zero RTs and inflates "staying on the shoulder").
+  if (e.repeat) return;
+  choose(e.key);
+});
+buttons.forEach(b => b.onclick = () => choose(b.dataset.key));
+
+let experimentEndIso = '';
+let experimentDurationMs = 0;
+
+function buildPayload() {
+  return {
+    version: VERSION,
+    session,
+    participantId,
+    tag: playerTag,
+    testMode: CFG.testMode,
+    socialCondition,
+    deterrenceCondition,
+    shoulderMode,
+    assignmentSource,
+    startedAt: experimentStartIso,
+    endedAt: experimentEndIso,
+    durationMs: experimentDurationMs || Math.round(performance.now() - experimentStartPerf),
+    userAgent: navigator.userAgent,
+    screen: { w: window.screen.width, h: window.screen.height, viewportW: window.innerWidth, viewportH: window.innerHeight },
+    config: CFG,
+    testSettings: CFG.testMode ? SETTINGS : undefined,
+    finalScore: score,
+    records,
+    events
+  };
+}
+
+function downloadData() {
+  const blob = new Blob([JSON.stringify(buildPayload(), null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${session}_data.json`;
+  a.click();
+}
+
+function finish() {
+  if (finished) return;
+  finished = true;
+  running = false;
+  setLocked(true);
+  experimentEndIso = new Date().toISOString();
+  experimentDurationMs = Math.round(performance.now() - experimentStartPerf);
+  $('overlay').classList.remove('hidden');
+  $('overlay').innerHTML = `
+    <div class="card">
+      <h1>${TXT[lang].done}</h1>
+      <p>${TXT[lang].points}: <b>${score}</b></p>
+      <button class="btn" id="download">${TXT[lang].download}</button>
+      <button class="btn secondary" onclick="location.reload()">${TXT[lang].restart}</button>
+    </div>
+  `;
+  $('download').onclick = downloadData;
+  renderDevStatus();
+}
+
+// =====================================================================
+// EXPERIMENTER PANEL (test mode only). Removed from the page when CFG.testMode = false.
+// =====================================================================
+const SETTINGS_KEY = 'copycat_experiment_dev_settings';
+const CFG_DEFAULTS = JSON.parse(JSON.stringify(CFG));
+const PARAM_KEYS = ['starting', 'jamStartTrial', 'openRoadReward', 'jamNormativeReward', 'shoulderReward',
+                    'brakeCost', 'high.p', 'high.fine', 'low.p', 'low.fine'];
+const PRE_RUN_ONLY = ['starting', 'jamStartTrial'];
+const COUNT_PRESETS = { quick: CFG_DEFAULTS.countsTest, full: CFG_DEFAULTS.countsFull };
+// Candidate payoff sets for the discussion with Yefim (fines kept as in the proposal: EV = 45 in both regimes).
+const PAYOFF_PRESETS = {
+  v4:  { label: 'Shoulder 10 (V_4)', openRoadReward: 10, jamNormativeReward: 5, shoulderReward: 10, 'high.p': 0.9, 'high.fine': 50, 'low.p': 0.1, 'low.fine': 450 },
+  mid: { label: 'Shoulder 25',       openRoadReward: 10, jamNormativeReward: 5, shoulderReward: 25, 'high.p': 0.9, 'high.fine': 50, 'low.p': 0.1, 'low.fine': 450 },
+  hi:  { label: 'Shoulder 40',       openRoadReward: 10, jamNormativeReward: 5, shoulderReward: 40, 'high.p': 0.9, 'high.fine': 50, 'low.p': 0.1, 'low.fine': 450 }
+};
+
+function getParam(path) { return path.split('.').reduce((o, k) => o[k], CFG); }
+function setParam(path, v) {
+  const ks = path.split('.');
+  let o = CFG;
+  for (let i = 0; i < ks.length - 1; i++) o = o[ks[i]];
+  o[ks[ks.length - 1]] = v;
+}
+function defaultSettings() {
+  const params = {};
+  PARAM_KEYS.forEach(k => { params[k] = k.split('.').reduce((o, p) => o[p], CFG_DEFAULTS); });
+  return {
+    runMode: 'scripted', manualPhase: 'baseline',
+    counts: { ...CFG_DEFAULTS.countsTest },
+    social: 'experimental', det: 'high', shoulder: 'stay',
+    fineOverride: 'random', theme: CFG_DEFAULTS.theme, lang: null, panelOpen: true,
+    params
+  };
+}
+let SETTINGS = defaultSettings();
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    const d = defaultSettings();
+    SETTINGS = { ...d, ...s, counts: { ...d.counts, ...(s.counts || {}) }, params: { ...d.params, ...(s.params || {}) } };
+  } catch (e) { /* storage unavailable: keep defaults */ }
+}
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(SETTINGS)); } catch (e) { /* ignore */ }
+}
+function applyTheme(t) { document.documentElement.dataset.theme = t; }
+function applySettingsToExperiment() {
+  PARAM_KEYS.forEach(k => {
+    const v = Number(SETTINGS.params[k]);
+    if (Number.isFinite(v)) setParam(k, v);
+  });
+  socialCondition = SETTINGS.social;
+  deterrenceCondition = SETTINGS.det;
+  shoulderMode = SETTINGS.shoulder;
+  score = CFG.starting;
+  $('score').textContent = score;
+  applyTheme(SETTINGS.theme);
+}
+
+function setPanelOpen(open) {
+  if (!CFG.testMode) return;
+  document.body.classList.toggle('dev-open', open);
+  SETTINGS.panelOpen = open;
+  saveSettings();
+}
+
+function setSetting(name, v) {
+  if (name === 'runMode') {
+    // Switching to manual mid-run continues in the phase the run is currently in.
+    if (v === 'manual' && SETTINGS.runMode !== 'manual' && running) SETTINGS.manualPhase = phaseOf(trial);
+    SETTINGS.runMode = v;
+  } else if (name === 'manualPhase') SETTINGS.manualPhase = v;
+  else if (name === 'social') { SETTINGS.social = v; socialCondition = v; }
+  else if (name === 'det') { SETTINGS.det = v; deterrenceCondition = v; }
+  else if (name === 'shoulder') { SETTINGS.shoulder = v; shoulderMode = v; }
+  else if (name === 'fineOverride') SETTINGS.fineOverride = v;
+  else if (name === 'theme') { SETTINGS.theme = v; applyTheme(v); }
+  saveSettings();
+  renderDev();
+  updateHud();
+}
+
+function fmt(n) { return (Math.round(n * 10) / 10).toString(); }
+function signed(n) { return (n > 0 ? '+' : n < 0 ? '−' : '') + fmt(Math.abs(n)); }
+
+function renderEV() {
+  const adv = CFG.shoulderReward - CFG.jamNormativeReward;
+  const evH = CFG.high.p * CFG.high.fine, evL = CFG.low.p * CFG.low.fine;
+  const warn = Math.abs(evH - evL) > 1e-9
+    ? `<div class="warn">Expected fines differ (${fmt(evH)} vs ${fmt(evL)}) — conditions are not equated.</div>` : '';
+  $('evSummary').innerHTML = `
+    <div><span class="k">Shoulder advantage in jam:</span> <b>${signed(adv)}</b> / trial</div>
+    <div><span class="k">Expected fine:</span> High <b>${fmt(evH)}</b> · Low <b>${fmt(evL)}</b></div>
+    <div><span class="k">Shoulder vs road under deterrence:</span> High <b>${signed(adv - evH)}</b> · Low <b>${signed(adv - evL)}</b></div>
+    <div><span class="k">Fined shoulder trial nets:</span> High <b>${signed(CFG.shoulderReward - CFG.high.fine)}</b> · Low <b>${signed(CFG.shoulderReward - CFG.low.fine)}</b></div>
+    ${warn}`;
+}
+
+function renderDevStatus() {
+  if (!CFG.testMode || !$('devStatus')) return;
+  let html;
+  if (!running && !finished) {
+    html = `<div><b>Not started.</b> Choose settings, then press Start in the game.</div>`;
+  } else {
+    const ph = phaseOf(trial);
+    const shoulderCount = records.filter(r => r.is_violation).length;
+    const fines = records.filter(r => r.fine > 0);
+    const fineSum = fines.reduce((a, r) => a + r.fine, 0);
+    const nextPh = isManual() && SETTINGS.manualPhase !== ph ? ` <span class="k">→ next: ${PHASE_LABEL[SETTINGS.manualPhase]}</span>` : '';
+    html = `
+      <div><span class="k">Trial</span> <b>${trial}${isManual() ? '' : ' / ' + totalTrials()}</b> · <b>${PHASE_LABEL[ph]}</b>${nextPh}${finished ? ' · <b>finished</b>' : ''}</div>
+      <div><span class="k">Road</span> <b>${isJamTrial(trial) ? 'jam' : 'open'}</b> · <span class="k">Lane</span> <b>${LANES[playerLaneIdx]}</b> · <span class="k">Score</span> <b>${score}</b></div>
+      <div><span class="k">Shoulder choices</span> <b>${shoulderCount}</b> / ${records.length} · <span class="k">Fines</span> <b>${fines.length}</b> (−${fineSum})</div>`;
+  }
+  $('devStatus').innerHTML = html;
+}
+
+function renderDev() {
+  if (!CFG.testMode || !$('devPanel')) return;
+  document.querySelectorAll('#devPanel .seg').forEach(seg => {
+    const map = { runMode: SETTINGS.runMode, manualPhase: SETTINGS.manualPhase, social: SETTINGS.social, det: SETTINGS.det,
+                  shoulder: SETTINGS.shoulder, fineOverride: SETTINGS.fineOverride, theme: SETTINGS.theme };
+    seg.querySelectorAll('button[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === map[seg.dataset.setting])));
+  });
+  const manual = SETTINGS.runMode === 'manual';
+  $('secPhase').classList.toggle('hidden', !manual);
+  $('secCounts').classList.toggle('hidden', manual);
+  $('runModeNote').textContent = manual
+    ? 'No trial limit. Pick the phase below at any time; end the run with “End run”.'
+    : 'Phases run in order using the trial counts below (editable at any time).';
+  document.querySelectorAll('#devPanel [data-count]').forEach(inp => {
+    if (document.activeElement !== inp) inp.value = SETTINGS.counts[inp.dataset.count];
+  });
+  const tot = Object.values(SETTINGS.counts).reduce((a, b) => a + b, 0);
+  $('countTotal').textContent = `total ${tot}`;
+  document.querySelectorAll('#devPanel [data-param]').forEach(inp => {
+    if (document.activeElement !== inp) inp.value = SETTINGS.params[inp.dataset.param];
+    inp.disabled = running && PRE_RUN_ONLY.includes(inp.dataset.param);
+  });
+  $('devEnd').disabled = !running;
+  renderEV();
+  renderDevStatus();
+}
+
+function initDevPanel() {
+  if (!CFG.testMode) {
+    $('devToggle').remove();
+    $('devPanel').remove();
+    applyTheme(CFG.theme);
+    return;
+  }
+  loadSettings();
+  applySettingsToExperiment();
+  $('devToggle').classList.remove('hidden');
+
+  document.querySelectorAll('#devPanel .seg').forEach(seg => {
+    seg.addEventListener('click', e => {
+      const b = e.target.closest('button[data-v]');
+      if (b) setSetting(seg.dataset.setting, b.dataset.v);
+    });
+  });
+  document.querySelectorAll('#devPanel [data-count]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      SETTINGS.counts[inp.dataset.count] = Math.max(0, Math.floor(Number(inp.value) || 0));
+      saveSettings();
+      renderDev();
+      updateHud();
+    });
+  });
+  document.querySelectorAll('#devPanel [data-countpreset]').forEach(b => {
+    b.onclick = () => { SETTINGS.counts = { ...COUNT_PRESETS[b.dataset.countpreset] }; saveSettings(); renderDev(); updateHud(); };
+  });
+  document.querySelectorAll('#devPanel [data-param]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const v = Number(inp.value);
+      if (inp.value === '' || !Number.isFinite(v)) return;
+      SETTINGS.params[inp.dataset.param] = v;
+      setParam(inp.dataset.param, v);
+      if (inp.dataset.param === 'starting' && !running) { score = v; $('score').textContent = v; }
+      saveSettings();
+      renderEV();
+    });
+  });
+  const presetRow = $('payoffPresets');
+  Object.entries(PAYOFF_PRESETS).forEach(([key, p]) => {
+    const b = document.createElement('button');
+    b.className = 'dev-btn';
+    b.textContent = p.label;
+    b.onclick = () => {
+      Object.entries(p).forEach(([k, v]) => { if (k !== 'label') { SETTINGS.params[k] = v; setParam(k, v); } });
+      saveSettings();
+      renderDev();
+    };
+    presetRow.appendChild(b);
+  });
+
+  $('devToggle').onclick = () => setPanelOpen(true);
+  $('devClose').onclick = () => setPanelOpen(false);
+  $('devDownload').onclick = downloadData;
+  $('devEnd').onclick = () => { if (running) finish(); };
+  $('devRestart').onclick = () => { saveSettings(); location.reload(); };
+  $('devReset').onclick = () => { SETTINGS = defaultSettings(); saveSettings(); location.reload(); };
+
+  setPanelOpen(SETTINGS.panelOpen);
+  if (SETTINGS.lang) setLang(SETTINGS.lang);
+  renderDev();
+}
+
+initDevPanel();
+updateHud();
+</script>
+</body>
+</html>
