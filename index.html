@@ -728,7 +728,8 @@ body.layout-side .hint { max-width: 180px; text-align: center; }
 .screen .opt input { margin: 0; }
 .screen .scale { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .screen .scale .opt { padding: 6px 10px; }
-.screen .scale-ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 4px; max-width: 420px; }
+.screen .likert { display: inline-flex; flex-direction: column; max-width: 100%; }
+.screen .scale-ends { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 4px; }
 .screen input[type=number], .screen select, .screen textarea {
   font: inherit; color: var(--text); background: var(--key-bg);
   border: 1px solid var(--surface-border); border-radius: 8px; padding: 7px 9px;
@@ -1132,8 +1133,7 @@ const TXT = {
     ineligibleBody: 'This study is open only to people who hold a valid driver’s license, so you cannot take part this time.',
     introBody: [
       'You are about to drive along a busy road. At each step you choose how to move on, and your car carries out your choice.',
-      'Every step forward earns points. You start with {start} points, and at the end of the drive your points are converted into a bonus: the more points you finish with, the larger your bonus.',
-      'Drive the way you normally drive in a traffic jam.'
+      'Every step forward earns points. You start with {start} points, and at the end of the drive your points are converted into a bonus: the more points you finish with, the larger your bonus.'
     ],
     keyUp: 'Drive forward', keySide: 'Change lane', keyDown: 'Brake',
     keysNote: 'Use the arrow keys on your keyboard or the arrow buttons next to the road.',
@@ -1141,11 +1141,44 @@ const TXT = {
     arrivedTitle: 'You have reached your destination',
     arrivedBody: 'You finished the drive with <b>{score}</b> points. A few short questions follow.',
     q1Title: 'About the drive',
+    agreeLow: 'Strongly disagree', agreeHigh: 'Strongly agree',
+    // Perceived Awareness of the Research Hypothesis scale (Rubin, 2016); items 2 and 4 are reverse-scored.
+    // Check the wording against the original publication before data collection.
+    parh: [
+      'I knew what the researchers were investigating in this research.',
+      'I wasn’t sure what the researchers were trying to demonstrate in this research.',
+      'I had a good idea about what the hypotheses were in this research.',
+      'I was unclear about exactly what the research aims were in this research.'
+    ],
+    qTopic: 'Which of the following best describes what this study was about?',
+    topics: {
+      decisions: 'How drivers make decisions in traffic jams',
+      reaction: 'Reaction time and attention while driving',
+      fines: 'How drivers respond to fines',
+      others: 'How drivers are influenced by other drivers',
+      memory: 'Memory for details along the road'
+    },
+    qSeen: 'Which of the following did you see at least once during the drive? (Choose all that apply.)',
+    seen: {
+      benches: 'Benches beside the road',
+      km: 'A distance sign (kilometre marker)',
+      shoulder: 'Another vehicle driving on the road shoulder',
+      truck: 'A truck',
+      police: 'A police car',
+      light: 'A traffic light'
+    },
+    seenNone: 'None of these',
+    q3Items: {
+      attention: 'I paid attention to what the other drivers were doing.',
+      shared: 'I felt I was sharing the road with other people.',
+      real: 'The other cars behaved like real drivers.'
+    },
     qPurpose: 'In your own words, what do you think this study was about?',
     qUnusual: 'Did you notice anything unusual during the drive? If so, please describe it briefly.',
     qRealism: 'How realistic did the drive feel?',
-    scaleLow: '1 = not at all', scaleHigh: '7 = very realistic',
-    q2Title: 'Other vehicles',
+    scaleLow: 'Not at all', scaleHigh: 'Very realistic',
+    q2Title: 'What you saw',
+    q3TitleDrivers: 'The other drivers',
     qShoulder: 'During the drive, did you see other vehicles driving on the road shoulder?',
     qDrivers: 'Who do you think was driving the other vehicles on the road?',
     optParticipants: 'Other participants in the study', optComputer: 'The computer',
@@ -1202,8 +1235,7 @@ const TXT = {
     ineligibleBody: 'המחקר מיועד לבעלי רישיון נהיגה בתוקף בלבד, ולכן לא ניתן להשתתף בו הפעם.',
     introBody: [
       'עוד רגע תנהגו בכביש עמוס. בכל שלב תבחרו איך להמשיך, והרכב שלכם יבצע את הבחירה.',
-      'כל התקדמות מזכה בנקודות. אתם מתחילים עם {start} נקודות, ובסוף הנסיעה הנקודות יומרו לבונוס: ככל שתסיימו עם יותר נקודות, הבונוס יהיה גבוה יותר.',
-      'נהגו כפי שאתם נוהגים בדרך כלל בפקק.'
+      'כל התקדמות מזכה בנקודות. אתם מתחילים עם {start} נקודות, ובסוף הנסיעה הנקודות יומרו לבונוס: ככל שתסיימו עם יותר נקודות, הבונוס יהיה גבוה יותר.'
     ],
     keyUp: 'נסיעה קדימה', keySide: 'מעבר נתיב', keyDown: 'בלימה',
     keysNote: 'אפשר להשתמש בחיצי המקלדת או בכפתורי החצים שליד הכביש.',
@@ -1211,11 +1243,42 @@ const TXT = {
     arrivedTitle: 'הגעתם ליעד',
     arrivedBody: 'סיימתם את הנסיעה עם <b>{score}</b> נקודות. לפניכם מספר שאלות קצרות.',
     q1Title: 'על הנסיעה',
+    agreeLow: 'בכלל לא מסכים/ה', agreeHigh: 'מסכים/ה מאוד',
+    parh: [
+      'ידעתי מה החוקרים בודקים במחקר הזה.',
+      'לא הייתי בטוח/ה מה החוקרים ניסו להראות במחקר הזה.',
+      'היה לי מושג טוב לגבי ההשערות של המחקר הזה.',
+      'לא היה לי ברור מה בדיוק מטרות המחקר הזה.'
+    ],
+    qTopic: 'איזה מהבאים מתאר הכי טוב את נושא המחקר?',
+    topics: {
+      decisions: 'איך נהגים מקבלים החלטות בפקק',
+      reaction: 'זמני תגובה וקשב בזמן נהיגה',
+      fines: 'איך נהגים מגיבים לקנסות',
+      others: 'איך נהגים מושפעים מנהגים אחרים',
+      memory: 'זיכרון לפרטים לאורך הדרך'
+    },
+    qSeen: 'איזה מהבאים ראיתם לפחות פעם אחת במהלך הנסיעה? (אפשר לסמן כמה)',
+    seen: {
+      benches: 'ספסלים בצד הדרך',
+      km: 'שלט מרחק (קילומטרז\')',
+      shoulder: 'רכב אחר שנוסע בשול הדרך',
+      truck: 'משאית',
+      police: 'ניידת משטרה',
+      light: 'רמזור'
+    },
+    seenNone: 'אף אחד מאלה',
+    q3Items: {
+      attention: 'שמתי לב למה שהנהגים האחרים עושים.',
+      shared: 'הרגשתי שאני חולק/ת את הכביש עם אנשים אחרים.',
+      real: 'הרכבים האחרים התנהגו כמו נהגים אמיתיים.'
+    },
     qPurpose: 'במילים שלכם, על מה לדעתכם היה המחקר?',
     qUnusual: 'האם שמתם לב למשהו חריג במהלך הנסיעה? אם כן, תארו אותו בקצרה.',
     qRealism: 'עד כמה הנסיעה הרגישה מציאותית?',
-    scaleLow: '1 = בכלל לא', scaleHigh: '7 = מציאותית מאוד',
-    q2Title: 'רכבים אחרים',
+    scaleLow: 'בכלל לא', scaleHigh: 'מציאותית מאוד',
+    q2Title: 'מה ראיתם',
+    q3TitleDrivers: 'הנהגים האחרים',
     qShoulder: 'במהלך הנסיעה, האם ראיתם רכבים אחרים נוסעים בשול הדרך?',
     qDrivers: 'מי לדעתכם נהג ברכבים האחרים שעל הכביש?',
     optParticipants: 'משתתפים אחרים במחקר', optComputer: 'המחשב',
@@ -1246,7 +1309,7 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_11';
+const VERSION = 'V_12';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
 const isJamTrial = t => t >= CFG.jamStartTrial;
@@ -2751,7 +2814,9 @@ function finish() {
 // so a later question cannot shape an earlier answer. Everything is stored in the data file under "participant".
 // =====================================================================
 const participant = { lang: null, screens: [], consent: null, license: null, questionnaire: {}, withdrawData: null,
-                      answerLog: [], langSwitches: [] };
+                      answerLog: [], langSwitches: [], optionOrder: {},
+                      // The first answer submitted for every question, and every later change (analysis uses the first).
+                      firstAnswers: {}, answerChanges: [] };
 // Every named field's latest value, so answers survive going back and switching language.
 const formState = {};
 let currentScreen = null;
@@ -2763,9 +2828,23 @@ function radioGroup(name, options) {
   return `<div class="opts" role="radiogroup">${options.map(([v, label]) =>
     `<label class="opt"><input type="radio" name="${name}" value="${v}"> ${label}</label>`).join('')}</div>`;
 }
+function likert(name, text, t) {
+  const opts = [1, 2, 3, 4, 5, 6, 7].map(n => `<label class="opt"><input type="radio" name="${name}" value="${n}"> ${n}</label>`).join('');
+  return `<div class="q"><span class="q-label">${text}</span><div class="likert" dir="ltr"><div class="scale">${opts}</div>
+    <div class="scale-ends"><span dir="auto">${t.agreeLow}</span><span dir="auto">${t.agreeHigh}</span></div></div></div>`;
+}
+// Option order is shuffled once per participant (kept when going back or switching language) and saved.
+function shuffledOnce(key, items) {
+  if (!participant.optionOrder[key]) {
+    const a = items.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    participant.optionOrder[key] = a;
+  }
+  return participant.optionOrder[key];
+}
 function scale7(name, t) {
   const opts = [1, 2, 3, 4, 5, 6, 7].map(n => `<label class="opt"><input type="radio" name="${name}" value="${n}"> ${n}</label>`).join('');
-  return `<div class="scale" dir="ltr">${opts}</div><div class="scale-ends"><span>${t.scaleLow}</span><span>${t.scaleHigh}</span></div>`;
+  return `<div class="likert" dir="ltr"><div class="scale">${opts}</div><div class="scale-ends"><span dir="auto">${t.scaleLow}</span><span dir="auto">${t.scaleHigh}</span></div></div>`;
 }
 function readForm(root) {
   const out = {};
@@ -2845,22 +2924,51 @@ const SCREENS = {
     mount: () => { $('next').onclick = () => leaveScreen('q1'); }
   }),
   q1: t => questionPage(t, t.q1Title, `
-      <div class="q"><span class="q-label">${t.qPurpose}</span><textarea name="purpose"></textarea></div>
-      <div class="q"><span class="q-label">${t.qUnusual}</span><textarea name="unusual"></textarea></div>
-      <div class="q"><span class="q-label">${t.qRealism}</span>${scale7('realism', t)}</div>`,
-    ['realism'], 'q2', null),
-  q2: t => questionPage(t, t.q2Title, `
-      <div class="q"><span class="q-label">${t.qShoulder}</span>${radioGroup('saw_shoulder_vehicles', [['yes', t.yes], ['no', t.no], ['not_sure', t.notSure]])}</div>
-      <div class="q"><span class="q-label">${t.qDrivers}</span>${radioGroup('other_drivers', [['participants', t.optParticipants], ['computer', t.optComputer], ['not_sure', t.notSure]])}</div>`,
-    ['saw_shoulder_vehicles', 'other_drivers'], 'q3', 'q1'),
-  q3: t => questionPage(t, t.q3Title, `
+      <div class="q"><span class="q-label">${t.qRealism}</span>${scale7('realism', t)}</div>
+      ${t.parh.map((txt, i) => likert('parh_' + (i + 1), txt, t)).join('')}
+      <div class="q"><span class="q-label">${t.qTopic}</span>
+        <div class="opts" style="flex-direction:column;align-items:flex-start">
+          ${shuffledOnce('topic', ['decisions', 'reaction', 'fines', 'others', 'memory']).map(k =>
+            `<label class="opt"><input type="radio" name="topic" value="${k}"> ${t.topics[k]}</label>`).join('')}
+          <label class="opt"><input type="radio" name="topic" value="not_sure"> ${t.notSure}</label>
+        </div></div>`,
+    ['realism', 'parh_1', 'parh_2', 'parh_3', 'parh_4', 'topic'], 'q2', null),
+  q2: t => {
+    const page = questionPage(t, t.q2Title, `
+      <div class="q"><span class="q-label">${t.qSeen}</span>
+        <div class="opts" style="flex-direction:column;align-items:flex-start">
+          ${shuffledOnce('seen', ['benches', 'km', 'shoulder', 'truck', 'police', 'light']).map(k =>
+            `<label class="opt"><input type="checkbox" name="seen_${k}"> ${t.seen[k]}</label>`).join('')}
+          <label class="opt"><input type="checkbox" name="seen_none"> ${t.seenNone}</label>
+        </div></div>`,
+      [], 'q3', 'q1',
+      a => Object.keys(a).some(k => k.startsWith('seen_') && a[k] === true));
+    const mount = page.mount;
+    page.mount = root => {
+      // "None of these" excludes every other choice, and the other way round.
+      const boxes = [...root.querySelectorAll('input[type=checkbox][name^=seen_]')];
+      boxes.forEach(b => b.addEventListener('change', () => {
+        if (!b.checked) return;
+        if (b.name === 'seen_none') boxes.forEach(o => { if (o !== b) o.checked = false; });
+        else root.querySelector('input[name=seen_none]').checked = false;
+      }));
+      mount(root);
+    };
+    return page;
+  },
+  q3: t => questionPage(t, t.q3TitleDrivers, `
+      ${likert('others_attention', t.q3Items.attention, t)}
+      ${likert('others_shared_road', t.q3Items.shared, t)}
+      ${likert('others_real_drivers', t.q3Items.real, t)}`,
+    ['others_attention', 'others_shared_road', 'others_real_drivers'], 'q4', 'q2'),
+  q4: t => questionPage(t, t.q3Title, `
       <div class="q"><span class="q-label">${t.qAge}</span><input type="number" name="age" min="16" max="99" inputmode="numeric"></div>
       <div class="q"><span class="q-label">${t.qGender}</span>${radioGroup('gender', [['female', t.gFemale], ['male', t.gMale], ['other', t.gOther], ['na', t.gNa]])}</div>
       <div class="q"><span class="q-label">${t.qLicenseYears}</span><input type="number" name="license_years" min="0" max="80" step="0.5" inputmode="decimal"></div>
       <div class="q"><span class="q-label">${t.qFreq}</span><select name="driving_frequency">
         <option value="">${t.choose}</option><option value="daily">${t.fDaily}</option><option value="weekly">${t.fWeekly}</option>
         <option value="once_a_week">${t.fOnce}</option><option value="less">${t.fLess}</option></select></div>`,
-    ['age', 'gender', 'license_years', 'driving_frequency'], 'debrief', 'q2'),
+    ['age', 'gender', 'license_years', 'driving_frequency'], 'debrief', 'q3'),
   debrief: t => ({
     html: `<h1>${t.debriefTitle}</h1>${t.debriefBody.map(p => `<p>${p}</p>`).join('')}
       <label class="check"><input type="checkbox" id="withdrawBox" name="withdraw"> <span>${t.withdraw}</span></label>
@@ -2899,16 +3007,24 @@ function mountTestEndButtons() {
 }
 
 // One questionnaire page: all listed fields are required; the open questions are optional.
-function questionPage(t, title, body, required, nextName, backName) {
+function questionPage(t, title, body, required, nextName, backName, extraValid) {
   return {
     back: backName,
     html: `<h2>${title}</h2>${body}<div class="form-error" id="formError"></div>
       <div class="actions"><button class="btn" id="next">${t.cont}</button></div>`,
     mount: root => {
+      root.addEventListener('change', () => { const e = $('formError'); if (e) e.textContent = ''; });
       $('next').onclick = () => {
         const answers = readForm(root);
         const missing = required.filter(k => answers[k] === '' || answers[k] === undefined);
-        if (missing.length) { $('formError').textContent = t.required; return; }
+        if (missing.length || (extraValid && !extraValid(answers))) { $('formError').textContent = t.required; return; }
+        const iso = new Date().toISOString();
+        Object.entries(answers).forEach(([k, v]) => {
+          if (!(k in participant.firstAnswers)) participant.firstAnswers[k] = v;
+          else if (participant.questionnaire[k] !== v) {
+            participant.answerChanges.push({ field: k, from: participant.questionnaire[k], to: v, first: participant.firstAnswers[k], screen: currentScreen, iso });
+          }
+        });
         Object.assign(participant.questionnaire, answers);
         leaveScreen(nextName);
       };
