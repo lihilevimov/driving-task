@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Traffic Jam Driving Experience</title>
+<title>Driving Simulator</title>
 <style>
 /* ---------- THEMES ----------
    Day   = light page chrome + daylight road scene (default)
@@ -819,7 +819,6 @@ html.motion-smooth .npc .car-chassis {
     <header class="hud">
       <div>
         <div class="hud-left">
-          <button class="lang-toggle hidden" id="langToggle" type="button"></button>
           <div>
             <div class="meta" id="phase"></div>
             <div id="trial" class="hud-title"></div>
@@ -962,6 +961,13 @@ html.motion-smooth .npc .car-chassis {
       <button data-v="skip">Game only</button>
     </div>
     <p class="dev-note">Full: language, consent, licence question, instructions, drive, questionnaire and debrief, exactly as participants will see them. Game only: straight to the drive (applies on the next restart).</p>
+    <span class="dev-label">Language</span>
+    <div class="seg" data-setting="language">
+      <button data-v="choice">Choose at start</button>
+      <button data-v="en">English only</button>
+      <button data-v="he">Hebrew only</button>
+    </div>
+    <p class="dev-note">Applies on the next restart.</p>
   </section>
 
   <section class="dev-sec">
@@ -1034,6 +1040,9 @@ const CFG = {
   shoulderDriveMs: 1180,
   brakeMs: 520,
   theme: 'day',
+  // 'choice' = language chosen on the first screen only; 'en' / 'he' = fixed language, no choice screen
+  // (Yefim: online runs in English only; a student sample may get the choice).
+  languageMode: 'choice',
   // 'continuous' (V_6) or 'classic' (V_5 centre feedback with pauses)
   feedbackStyle: 'continuous',
   interTrialMs: 0,     // pause between the end of a move and the next decision (continuous mode)
@@ -1057,7 +1066,7 @@ const CFG = {
     durationScale: 1.15,                      // moves ~15% longer
     ease: 'cubic-bezier(.45,.05,.25,1)',      // S-curve: accelerate, then decelerate
     jitterPx: 4,                              // each car rests up to ±4px off its slot
-    tempoMin: 0.86                            // each car moves at 86-100% of the step time (never slower)
+    tempoMin: 1                               // V_13: same step time for every car (different times let a car catch up with the one ahead)
   },
   // Copycat demonstration timing (ms). The demo starts right after the participant's previous move,
   // and control returns once the copycat is on the shoulder and the queue has closed the gap
@@ -1107,7 +1116,7 @@ function getLaneSlots(lane, pLaneIdx) {
 const TXT = {
   en: {
     points: 'POINTS',
-    title: 'Traffic Jam Driving Experience',
+    title: 'Driving Simulator',
     hint: 'You can navigate using the mouse or the keyboard arrow keys.',
     finePrefix: 'FINE: −',
     download: 'Download JSON Data',
@@ -1119,7 +1128,7 @@ const TXT = {
     required: 'Please answer all the questions marked above before continuing.',
     consentTitle: 'Consent to participate',
     consentBody: [
-      'In this study we examine how drivers behave in traffic jams. You will drive along a congested road in a short computer task, and then answer a few questions. The study takes about <span class="placeholder">[X]</span> minutes.',
+      'In this study we examine how drivers make decisions on the road. You will drive along a busy road in a short computer task, and then answer a few questions. The study takes about <span class="placeholder">[X]</span> minutes.',
       'Participation is voluntary. You may stop at any time, without any consequence.',
       'You will receive <span class="placeholder">[a fixed payment]</span> for taking part, plus a bonus based on the points you collect during the drive.',
       'Your answers are anonymous and will be used for research purposes only.',
@@ -1152,7 +1161,7 @@ const TXT = {
     ],
     qTopic: 'Which of the following best describes what this study was about?',
     topics: {
-      decisions: 'How drivers make decisions in traffic jams',
+      decisions: 'How drivers make decisions on the road',
       reaction: 'Reaction time and attention while driving',
       fines: 'How drivers respond to fines',
       others: 'How drivers are influenced by other drivers',
@@ -1193,8 +1202,7 @@ const TXT = {
     debriefBody: [
       'Thank you for taking part. We can now tell you more about the study.',
       'The study examines how people learn to follow or break a traffic rule (driving on the road shoulder), and how fines of different frequency and size affect that behaviour. Some participants saw other vehicles driving on the shoulder, and some did not.',
-      'The other vehicles on the road, including any vehicles you saw driving on the shoulder, were controlled by the computer and not by other participants. We did not tell you this in advance, because knowing it could have changed the way people drive in the task.',
-      'If you prefer that we do not use your data, tick the box below. This does not affect your payment.',
+      'The other vehicles on the road, including any vehicles you saw driving on the shoulder, were controlled by the computer and not by other participants. We did not tell you this in advance, because knowing it could have changed the way people drive in the task.'
     ],
     withdraw: 'Please do not use my data.',
     debriefAfter: [
@@ -1209,7 +1217,7 @@ const TXT = {
   },
   he: {
     points: 'נקודות',
-    title: 'חוויית נהיגה בפקק',
+    title: 'סימולטור נהיגה',
     hint: 'ניתן לנווט באמצעות העכבר או חיצי המקלדת.',
     finePrefix: 'קנס: −',
     download: 'הורדת נתונים (JSON)',
@@ -1221,7 +1229,7 @@ const TXT = {
     required: 'יש לענות על כל השאלות שלמעלה לפני שממשיכים.',
     consentTitle: 'הסכמה להשתתפות במחקר',
     consentBody: [
-      'במחקר זה אנו בודקים כיצד נהגים מתנהגים בפקקי תנועה. במסגרת המחקר תנהגו בכביש עמוס במשימה ממוחשבת קצרה, ולאחר מכן תענו על מספר שאלות. ההשתתפות אורכת כ-<span class="placeholder">[X]</span> דקות.',
+      'במחקר זה אנו בודקים כיצד נהגים מקבלים החלטות בדרך. במסגרת המחקר תנהגו בכביש עמוס במשימה ממוחשבת קצרה, ולאחר מכן תענו על מספר שאלות. ההשתתפות אורכת כ-<span class="placeholder">[X]</span> דקות.',
       'ההשתתפות במחקר היא מרצון. ניתן להפסיק בכל שלב, ללא כל השלכה.',
       'על ההשתתפות תקבלו <span class="placeholder">[תשלום קבוע]</span>, ובנוסף בונוס שנקבע לפי הנקודות שתצברו במהלך הנסיעה.',
       'התשובות אנונימיות וישמשו למטרות מחקר בלבד.',
@@ -1252,7 +1260,7 @@ const TXT = {
     ],
     qTopic: 'איזה מהבאים מתאר הכי טוב את נושא המחקר?',
     topics: {
-      decisions: 'איך נהגים מקבלים החלטות בפקק',
+      decisions: 'איך נהגים מקבלים החלטות בדרך',
       reaction: 'זמני תגובה וקשב בזמן נהיגה',
       fines: 'איך נהגים מגיבים לקנסות',
       others: 'איך נהגים מושפעים מנהגים אחרים',
@@ -1293,8 +1301,7 @@ const TXT = {
     debriefBody: [
       'תודה על ההשתתפות. כעת נוכל לספר לכם יותר על המחקר.',
       'המחקר בודק כיצד אנשים לומדים לציית לחוק תנועה או לעבור עליו (נסיעה בשול הדרך), וכיצד קנסות בתדירות ובגובה שונים משפיעים על ההתנהגות הזו. חלק מהמשתתפים ראו רכבים אחרים נוסעים בשול, וחלקם לא.',
-      'הרכבים האחרים על הכביש, כולל רכבים שאולי ראיתם נוסעים בשול, נשלטו על ידי המחשב ולא על ידי משתתפים אחרים. לא סיפרנו לכם זאת מראש, משום שהידיעה הייתה עלולה לשנות את אופן הנהיגה במשימה.',
-      'אם אתם מעדיפים שלא נשתמש בנתונים שלכם, סמנו את התיבה למטה. הדבר לא ישפיע על התשלום.'
+      'הרכבים האחרים על הכביש, כולל רכבים שאולי ראיתם נוסעים בשול, נשלטו על ידי המחשב ולא על ידי משתתפים אחרים. לא סיפרנו לכם זאת מראש, משום שהידיעה הייתה עלולה לשנות את אופן הנהיגה במשימה.'
     ],
     withdraw: 'אני מבקש/ת שלא להשתמש בנתונים שלי.',
     debriefAfter: [
@@ -1309,7 +1316,7 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_12';
+const VERSION = 'V_13';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
 const isJamTrial = t => t >= CFG.jamStartTrial;
@@ -1758,7 +1765,6 @@ function setLang(v) {
   $('hint').setAttribute('dir', v === 'he' ? 'rtl' : 'ltr');
   $('trial').setAttribute('dir', v === 'he' ? 'rtl' : 'ltr');
   $('scoreBox').setAttribute('dir', v === 'he' ? 'rtl' : 'ltr');
-  $('langToggle').textContent = TXT[v].otherLang;
   updateHud();
 }
 
@@ -1775,7 +1781,6 @@ function startGame() {
   experimentStartPerf = performance.now();
   experimentStartIso = new Date().toISOString();
   $('overlay').classList.add('hidden');
-  $('langToggle').classList.remove('hidden');
   lastSceneryWorldY = screenToWorldY(560);
   seedSceneryUpTo(screenToWorldY(-1400));
   if (typeof renderDev === 'function') renderDev();
@@ -1970,7 +1975,8 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
         evictRearCarsInLane(lane, durationMs);
         rearCars.push(tailCar);
         const baseRearY = getRearSlotForLane(lane, newPlayerLaneIdx);
-        animateCarTo(tailCar, baseRearY + tailCar.jitterY, durationMs, 'cubic-bezier(.24,.72,.24,1)', 0.78);
+        // Same timing as the platoon moving in behind it (crawl: 0.6 of the step), so they never close up.
+        animateCarTo(tailCar, baseRearY + tailCar.jitterY, Math.round(durationMs * (crawlActive() ? 0.6 : 1)), 'cubic-bezier(.24,.72,.24,1)', 0.78);
       }
 
       const newLead = spawnTrafficCar(-140, lane);
@@ -2167,7 +2173,10 @@ function runCopycatDemonstration(t, onSafe) {
             }, 300);
 
             const replacementRear = spawnTrafficCar(595, copycatLane, null, null, true);
-            animateCarTo(replacementRear, CFG.rearSlotFarY + replacementRear.jitterY, T.fillMs + 50, 'cubic-bezier(.22,.75,.24,1)', 0.78);
+            // Comes up from below only after the car ahead of it has started moving up (otherwise it drives into it).
+            setTimeout(() => {
+              animateCarTo(replacementRear, CFG.rearSlotFarY + replacementRear.jitterY, T.fillMs + 50, 'cubic-bezier(.22,.75,.24,1)', 0.78);
+            }, 350);
           }
         }
       }, T.fillStartMs);
@@ -2529,7 +2538,10 @@ function choose(key) {
     ? (laneAfter === 'shoulder' ? 2 : 1)
     : playerLaneIdx;
 
-  const targetPlayerY = (isShoulder && !isOvertakeAndMergeMode && isJamTrial(trial + 1))
+  // Crawl mode: the car stays at the same height on screen on the shoulder too. (Before, it jumped ~100px up
+  // while the road was still speeding up, which looked as if the screen had stopped following the car.)
+  // Overtaking is shown by the queued cars falling behind.
+  const targetPlayerY = (isShoulder && !isOvertakeAndMergeMode && isJamTrial(trial + 1) && !crawlActive())
     ? CFG.playerShoulderY
     : CFG.playerNormY;
 
@@ -2556,7 +2568,7 @@ function choose(key) {
       p.style.transition = 'left 0.34s cubic-bezier(.22,.86,.24,1), top 0.48s cubic-bezier(.22,.76,.24,1)';
       p.classList.add(moveDir === 'left' ? 'steer-left' : 'steer-right');
       p.style.left = laneX(shoulderName) + '%';
-      p.style.top = '280px';
+      p.style.top = (crawlActive() ? CFG.playerNormY : 280) + 'px';
 
       setTimeout(() => {
         p.classList.remove('steer-left', 'steer-right', 'blink-left', 'blink-right');
@@ -2821,6 +2833,7 @@ const participant = { lang: null, screens: [], consent: null, license: null, que
 const formState = {};
 let currentScreen = null;
 const screensMode = () => (CFG.testMode ? (SETTINGS.screens || 'full') : 'full');
+const languageMode = () => (CFG.testMode ? (SETTINGS.language || CFG.languageMode) : CFG.languageMode);
 const fill = (str, vars) => str.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
 const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -2878,7 +2891,7 @@ const SCREENS = {
     html: `<h1>${t.consentTitle}</h1>${t.consentBody.map(p => `<p>${p}</p>`).join('')}
       <label class="check"><input type="checkbox" id="consentBox" name="consent"> <span>${t.consentCheck}</span></label>
       <div class="actions"><button class="btn" id="next" disabled>${t.cont}</button></div>`,
-    back: 'lang',
+    back: () => (languageMode() === 'choice' ? 'lang' : null),
     mount: () => {
       const sync = () => { $('next').disabled = !$('consentBox').checked; };
       $('consentBox').onchange = sync;
@@ -2971,14 +2984,10 @@ const SCREENS = {
     ['age', 'gender', 'license_years', 'driving_frequency'], 'debrief', 'q3'),
   debrief: t => ({
     html: `<h1>${t.debriefTitle}</h1>${t.debriefBody.map(p => `<p>${p}</p>`).join('')}
-      <label class="check"><input type="checkbox" id="withdrawBox" name="withdraw"> <span>${t.withdraw}</span></label>
       <div style="margin-top:14px">${t.debriefAfter.map(p => `<p>${p}</p>`).join('')}</div>
       <div class="actions"><button class="btn" id="next">${t.finishBtn}</button></div>`,
     mount: () => {
-      $('next').onclick = () => {
-        participant.withdrawData = $('withdrawBox').checked;
-        leaveScreen('thanks');
-      };
+      $('next').onclick = () => leaveScreen('thanks');
     }
   }),
   thanks: t => ({
@@ -3085,8 +3094,6 @@ function showScreen(name, redraw = false) {
   }
   prefill(ov);
   if (sc.mount) sc.mount(ov);
-  // The language button is on every screen except the language choice itself.
-  $('langToggle').classList.toggle('hidden', name === 'lang');
 }
 
 // ---------- Fit the game to the window (14" laptops included) ----------
@@ -3135,6 +3142,7 @@ function defaultSettings() {
     counts: { ...CFG_DEFAULTS.countsTest },
     social: 'experimental', det: 'high', shoulder: 'stay',
     fineOverride: 'random', theme: CFG_DEFAULTS.theme, lang: null, panelOpen: false, screens: 'full',
+    language: CFG_DEFAULTS.languageMode,
     feedbackStyle: CFG_DEFAULTS.feedbackStyle,
     motion: CFG_DEFAULTS.motion,
     params
@@ -3191,6 +3199,7 @@ function setSetting(name, v) {
   else if (name === 'theme') { SETTINGS.theme = v; applyTheme(v); }
   else if (name === 'feedbackStyle') SETTINGS.feedbackStyle = v;
   else if (name === 'screens') SETTINGS.screens = v;
+  else if (name === 'language') SETTINGS.language = v;
   else if (name === 'motion') { SETTINGS.motion = v; applyMotion(); }
   saveSettings();
   renderDev();
@@ -3237,7 +3246,8 @@ function renderDev() {
   document.querySelectorAll('#devPanel .seg').forEach(seg => {
     const map = { runMode: SETTINGS.runMode, manualPhase: SETTINGS.manualPhase, social: SETTINGS.social, det: SETTINGS.det,
                   shoulder: SETTINGS.shoulder, fineOverride: SETTINGS.fineOverride, theme: SETTINGS.theme,
-                  feedbackStyle: SETTINGS.feedbackStyle, motion: SETTINGS.motion, screens: SETTINGS.screens };
+                  feedbackStyle: SETTINGS.feedbackStyle, motion: SETTINGS.motion, screens: SETTINGS.screens,
+                  language: SETTINGS.language };
     seg.querySelectorAll('button[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === map[seg.dataset.setting])));
   });
   const manual = SETTINGS.runMode === 'manual';
@@ -3328,9 +3338,15 @@ function initDevPanel() {
 }
 
 initDevPanel();
-$('langToggle').onclick = () => { $('langToggle').blur(); toggleLanguage(); };
-setLang('en');
-showScreen('lang');
+if (languageMode() === 'choice') {
+  setLang('en');
+  showScreen('lang');
+} else {
+  setLang(languageMode());
+  participant.lang = languageMode();
+  if (screensMode() === 'skip') startGame();
+  else showScreen('consent');
+}
 fitLayout();
 requestAnimationFrame(crawlFrame);
 </script>
