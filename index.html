@@ -684,6 +684,13 @@ body.dev-open .devpanel { transform: none; }
    ========================================== */
 .hud-title { font-size: 15px; font-weight: 700; }
 .hud-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.theme-toggle {
+  flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%; cursor: pointer;
+  display: grid; place-items: center;
+  border: 1px solid var(--surface-border); background: var(--panel-bg); color: var(--text);
+}
+.theme-toggle svg { width: 17px; height: 17px; }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .lang-toggle {
   flex: none; padding: 4px 10px; border-radius: 999px; cursor: pointer;
   border: 1px solid var(--surface-border); background: var(--panel-bg); color: var(--text);
@@ -819,6 +826,7 @@ html.motion-smooth .npc .car-chassis {
     <header class="hud">
       <div>
         <div class="hud-left">
+          <button class="theme-toggle" id="themeToggle" type="button"></button>
           <div>
             <div class="meta" id="phase"></div>
             <div id="trial" class="hud-title"></div>
@@ -999,14 +1007,6 @@ html.motion-smooth .npc .car-chassis {
   </section>
 
   <section class="dev-sec">
-    <h3>Display</h3>
-    <div class="seg" data-setting="theme">
-      <button data-v="day">Day</button>
-      <button data-v="night">Night</button>
-    </div>
-  </section>
-
-  <section class="dev-sec">
     <div class="dev-row" style="margin-top:0">
       <button class="dev-btn primary" id="devDownload">Download data</button>
       <button class="dev-btn" id="devCopy">Copy data</button>
@@ -1122,6 +1122,7 @@ const TXT = {
     download: 'Download JSON Data',
     copy: 'Copy data',
     restart: 'Restart',
+    toDark: 'Switch to dark display', toLight: 'Switch to light display',
     cont: 'Continue',
     back: 'Back',
     otherLang: 'עברית',
@@ -1223,6 +1224,7 @@ const TXT = {
     download: 'הורדת נתונים (JSON)',
     copy: 'העתקת נתונים',
     restart: 'הפעלה מחדש',
+    toDark: 'מעבר לתצוגה כהה', toLight: 'מעבר לתצוגה בהירה',
     cont: 'המשך',
     back: 'חזרה',
     otherLang: 'English',
@@ -1316,7 +1318,7 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_13';
+const VERSION = 'V_14';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
 const isJamTrial = t => t >= CFG.jamStartTrial;
@@ -1504,6 +1506,7 @@ function baseRecord() {
     motion: motionMode(),
     invalid_side_presses: invalidSidePresses,
     feedback_style: feedbackStyle(),
+    theme: document.documentElement.dataset.scene,
     tab_hidden_count: trialHiddenCount,
     window_blur_count: trialBlurCount,
     iso_time: new Date().toISOString(),
@@ -1757,6 +1760,7 @@ function computePhase(t) {
 
 function setLang(v) {
   lang = v;
+  if ($('themeToggle')) applyTheme(document.documentElement.dataset.scene || CFG.theme);
   if (CFG.testMode) { SETTINGS.lang = v; saveSettings(); }
   document.documentElement.lang = v;
   document.documentElement.dir = v === 'he' ? 'rtl' : 'ltr';
@@ -2828,7 +2832,8 @@ function finish() {
 const participant = { lang: null, screens: [], consent: null, license: null, questionnaire: {}, withdrawData: null,
                       answerLog: [], langSwitches: [], optionOrder: {},
                       // The first answer submitted for every question, and every later change (analysis uses the first).
-                      firstAnswers: {}, answerChanges: [] };
+                      firstAnswers: {}, answerChanges: [],
+                      initialTheme: null, themeSwitches: [] };
 // Every named field's latest value, so answers survive going back and switching language.
 const formState = {};
 let currentScreen = null;
@@ -3162,7 +3167,27 @@ function loadSettings() {
 function saveSettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(SETTINGS)); } catch (e) { /* ignore */ }
 }
-function applyTheme(t) { document.documentElement.dataset.scene = t; }
+function applyTheme(t) {
+  document.documentElement.dataset.scene = t;
+  const b = $('themeToggle');
+  if (!b) return;
+  const tt = TXT[lang] || TXT.en;
+  // Shows what the button will switch to: a moon in the light display, a sun in the dark one.
+  b.innerHTML = t === 'night'
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>';
+  const label = t === 'night' ? tt.toLight : tt.toDark;
+  b.setAttribute('aria-label', label);
+  b.title = label;
+}
+// The participant can switch between the light and dark display at any time; every switch is recorded.
+function toggleTheme() {
+  const from = document.documentElement.dataset.scene;
+  const to = from === 'night' ? 'day' : 'night';
+  participant.themeSwitches.push({ from, to, screen: (currentScreen && !$('overlay').classList.contains('hidden')) ? currentScreen : (running ? 'drive' : null), trial, iso: new Date().toISOString() });
+  applyTheme(to);
+  try { localStorage.setItem('driving_display', to); } catch (e) { /* not available */ }
+}
 function applySettingsToExperiment() {
   PARAM_KEYS.forEach(k => {
     const v = Number(SETTINGS.params[k]);
@@ -3173,7 +3198,6 @@ function applySettingsToExperiment() {
   shoulderMode = SETTINGS.shoulder;
   score = CFG.starting;
   $('score').textContent = score;
-  applyTheme(SETTINGS.theme);
 }
 
 function setPanelOpen(open) {
@@ -3338,6 +3362,13 @@ function initDevPanel() {
 }
 
 initDevPanel();
+{
+  let startTheme = CFG.theme;
+  try { startTheme = localStorage.getItem('driving_display') || CFG.theme; } catch (e) { /* not available */ }
+  applyTheme(startTheme);
+  participant.initialTheme = startTheme;
+  $('themeToggle').onclick = () => { $('themeToggle').blur(); toggleTheme(); };
+}
 if (languageMode() === 'choice') {
   setLang('en');
   showScreen('lang');
