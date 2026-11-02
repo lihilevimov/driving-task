@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Continuous Road Pilot V_7</title>
+<title>Continuous Road Pilot V_8</title>
 <style>
 /* ---------- THEMES ----------
    Day   = light page chrome + daylight road scene (default)
@@ -283,7 +283,9 @@ body {
   left: 0;
   right: 0;
   top: -36000px;
-  height: 40000px;
+  /* Zero height: the layer's size then follows the scenery actually present (a few screens),
+     instead of a 40,000px layer that some browsers/GPUs fail to draw. */
+  height: 0;
   z-index: 4;
   will-change: transform;
 }
@@ -896,10 +898,14 @@ html.motion-smooth .npc .car-chassis {
     <p class="dev-note">Continuous: points pop up next to the car during the move; once they appear, a key press is carried over to the next trial. Classic: big centre feedback and a pause, as before.</p>
     <span class="dev-label">Motion</span>
     <div class="seg" data-setting="motion">
+      <button data-v="crawl">Crawl (V_8)</button>
       <button data-v="smooth">Smooth (V_7)</button>
       <button data-v="original">Original (V_6)</button>
     </div>
-    <p class="dev-note">Smooth: accelerate-then-brake motion, ~15% longer moves, each car with its own timing, offset and stop-and-go creep.</p>
+    <p class="dev-note">Crawl: the road rolls continuously, speeding up and slowing down gently; points appear at about a third of the move and the next choice opens at 70%, so a quick choice keeps the car rolling.</p>
+    <div class="grid2" style="margin-top:8px">
+      <label>Crawl move duration × <input type="number" min="0.5" max="4" step="0.1" data-param="crawl.durationScale"></label>
+    </div>
   </section>
 
   <section class="dev-sec">
@@ -959,8 +965,19 @@ const CFG = {
   // Continuous mode: the outcome (points / fine) appears at this fraction of the move; from then until the
   // move ends a key press is accepted for the NEXT trial. So the next choice always follows the feedback.
   outcomeAtRatio: 0.65,
-  // 'smooth' (V_7) or 'original' (V_6) motion
-  motion: 'smooth',
+  // 'crawl' (V_8), 'smooth' (V_7) or 'original' (V_6) motion
+  motion: 'crawl',
+  // V_8 crawl: the road is moved frame by frame with gentle acceleration and braking. A choice made
+  // before the car has stopped continues the motion instead of starting a new "burst".
+  crawl: {
+    durationScale: 1.8,                 // moves ~1.8x longer than the original timings
+    accelShare: 0.35,                   // share of a move spent speeding up (and again slowing down)
+    outcomeAt: 0.35,                    // points / fine appear at 35% of the move
+    chainAt: 0.70,                      // the next choice opens at 70%, while the car is still rolling
+    minDecel: 220,                      // px/s^2, lower bound for braking to a stop
+    surgeScale: 0.3,                    // other cars' forward "surge" is reduced to 30%
+    npcEase: 'cubic-bezier(.33,0,.3,1)'
+  },
   smooth: {
     durationScale: 1.15,                      // moves ~15% longer
     ease: 'cubic-bezier(.45,.05,.25,1)',      // S-curve: accelerate, then decelerate
@@ -1037,7 +1054,7 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_7';
+const VERSION = 'V_8';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
 const isJamTrial = t => t >= CFG.jamStartTrial;
@@ -1059,6 +1076,7 @@ let running = false;
 let finished = false;
 let copycatRunning = false;
 let copycatVisible = false;
+let stepSeq = 0;
 let bufferOpen = false;          // accepting an early press for the next trial
 let bufferedKey = null;
 let bufferedAt = 0;
@@ -1066,13 +1084,79 @@ let pendingBufferedRt = null;
 let invalidSidePresses = 0;      // presses toward the guardrail while already at the road edge (this trial)
 const feedbackStyle = () => (CFG.testMode ? SETTINGS.feedbackStyle : CFG.feedbackStyle);
 const motionMode = () => (CFG.testMode ? SETTINGS.motion : CFG.motion);
-const motionSmooth = () => motionMode() === 'smooth';
-const motionScale = () => (motionSmooth() ? CFG.smooth.durationScale : 1);
+const crawlActive = () => motionMode() === 'crawl';
+const motionSmooth = () => motionMode() !== 'original';   // smooth and crawl share easing, jitter and idle creep
+const motionScale = () => (crawlActive() ? CFG.crawl.durationScale : (motionMode() === 'smooth' ? CFG.smooth.durationScale : 1));
+
+// ---- V_8 crawl engine ----
+// worldOffset is where the road logically is; crawl.shown is where it is drawn. Each frame the drawn
+// position moves toward the logical one with a speed that ramps up, cruises and brakes smoothly.
+// When a new move is added before the car has stopped, the speed simply carries on.
+const crawl = { shown: 0, v: 0, V: 0, a: 300, last: 0 };
+function displayedOffset() { return crawlActive() ? crawl.shown : worldOffset; }
+function glideTo(durationMs) {
+  const T = Math.max(0.2, durationMs / 1000);
+  const D = Math.max(1, worldOffset - crawl.shown);
+  const k = CFG.crawl.accelShare;
+  crawl.V = D / ((1 - k) * T);   // cruise speed so that ramp-up + cruise + ramp-down takes about T
+  crawl.a = crawl.V / (k * T);
+}
+// The lane dashes repeat every 68px, so moving the (slightly taller) dash strip by the remainder is seamless.
+// Using a transform instead of background-position means the road never has to be repainted while it moves.
+function paintCrawl() {
+  $('world').style.transform = `translateY(${crawl.shown}px)`;
+  const d = document.querySelector('.roadbase .divider');
+  if (d) d.style.transform = `translateY(${(crawl.shown % 68).toFixed(2)}px)`;
+}
+function crawlFrame(ts) {
+  if (!crawl.last) crawl.last = ts;
+  const dt = Math.min(0.05, (ts - crawl.last) / 1000);
+  crawl.last = ts;
+  if (crawlActive()) {
+    const d = worldOffset - crawl.shown;
+    if (d > 0.01 || crawl.v > 0) {
+      const aStop = Math.max(crawl.a, CFG.crawl.minDecel);
+      const stopV = Math.sqrt(2 * aStop * Math.max(0, d));   // fastest speed that can still stop in time
+      const target = Math.min(crawl.V, stopV);
+      if (crawl.v < target) crawl.v = Math.min(target, crawl.v + crawl.a * dt);
+      else crawl.v = Math.max(target, crawl.v - aStop * dt);
+      crawl.shown = Math.min(worldOffset, crawl.shown + crawl.v * dt);
+      if (worldOffset - crawl.shown < 0.3 && crawl.v < 8) { crawl.shown = worldOffset; crawl.v = 0; }
+      paintCrawl();
+    }
+  }
+  requestAnimationFrame(crawlFrame);
+}
+function endTime(moveMs) {
+  // Crawl + continuous feedback: the next choice opens before the move has finished (never into a copycat trial).
+  if (crawlActive() && feedbackStyle() === 'continuous' && !isCopycatTrial(trial + 1)) {
+    return Math.round(moveMs * CFG.crawl.chainAt);
+  }
+  return moveMs;
+}
+
 function applyMotion() {
   document.documentElement.classList.toggle('motion-smooth', motionSmooth());
-  // Align the lane dashes with the current road position without animating (avoids a long "spin" on the first move).
+  const w = $('world');
   const d = document.querySelector('.roadbase .divider');
-  if (d) { d.style.transition = 'none'; d.style.backgroundPosition = `0 ${worldOffset}px`; }
+  // Snap everything to the current road position without animating (avoids a long "spin" on the next move).
+  crawl.shown = worldOffset;
+  crawl.v = 0;
+  if (w) { w.style.transition = 'none'; w.style.transform = `translateY(${worldOffset}px)`; }
+  if (d) {
+    d.style.transition = 'none';
+    if (crawlActive()) {
+      d.style.top = '-68px';
+      d.style.willChange = 'transform';
+      d.style.backgroundPosition = '0 0';
+      d.style.transform = `translateY(${(worldOffset % 68).toFixed(2)}px)`;
+    } else {
+      d.style.top = '';
+      d.style.willChange = '';
+      d.style.transform = '';
+      d.style.backgroundPosition = `0 ${worldOffset}px`;
+    }
+  }
 }
 
 // Lane dashes move together with the road (same duration and easing), instead of a constant-speed loop.
@@ -1082,7 +1166,8 @@ function scrollDivider(durationMs, easing) {
   requestAnimationFrame(() => { d.style.backgroundPosition = `0 ${worldOffset}px`; });
 }
 function outcomeTime(moveMs) {
-  return feedbackStyle() === 'continuous' ? Math.round(moveMs * CFG.outcomeAtRatio) : moveMs;
+  if (feedbackStyle() !== 'continuous') return moveMs;
+  return Math.round(moveMs * (crawlActive() ? CFG.crawl.outcomeAt : CFG.outcomeAtRatio));
 }
 function openBufferAfterOutcome() {
   if (feedbackStyle() !== 'continuous') return;
@@ -1249,7 +1334,7 @@ function animateCarTo(car, targetY, durationMs, easing = 'cubic-bezier(.24,.72,.
   // V_7: on-screen settling moves use the S-curve and each car's own tempo (never longer than planned).
   if (motionSmooth() && brakeAtRatio > 0 && targetY > -80 && targetY < 520) {
     durationMs = Math.round(durationMs * (car.tempo || 1));
-    easing = CFG.smooth.ease;
+    easing = crawlActive() ? CFG.crawl.npcEase : CFG.smooth.ease;
   }
   car.y = targetY;
   void car.el.offsetHeight;
@@ -1576,7 +1661,7 @@ function updateRearTrafficForStep(durationMs, upcomingTrial, maneuverType, newPl
 
     const halfDur = Math.round(durationMs * 0.46);
     const settleDur = Math.round(durationMs * 0.48);
-    animateCarTo(activeRear, restY - 14, halfDur, 'cubic-bezier(.22,.75,.25,1)', 0);
+    animateCarTo(activeRear, restY - 14 * (crawlActive() ? CFG.crawl.surgeScale : 1), halfDur, 'cubic-bezier(.22,.75,.25,1)', 0);
     setTimeout(() => {
       if (activeRear.departing || activeRear.removed) return;
       animateCarTo(activeRear, restY, settleDur, 'cubic-bezier(.25,.72,.25,1)', 0.65);
@@ -1722,7 +1807,8 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
       }
     }
 
-    const pullForwardPx = (maneuverType === 'merge_back') ? 22 : (maneuverType === 'brake' ? 8 : 18);
+    const pullForwardPx = ((maneuverType === 'merge_back') ? 22 : (maneuverType === 'brake' ? 8 : 18))
+      * (crawlActive() ? CFG.crawl.surgeScale : 1);
     const halfDur = Math.round(durationMs * 0.44);
     const settleDur = Math.round(durationMs * 0.48);
 
@@ -1863,7 +1949,7 @@ function runCopycatDemonstration(t, onSafe) {
 function pruneOffscreenWorld() {
   document.querySelectorAll('.scenery, .guard-postL, .guard-postR').forEach(el => {
     const y = parseFloat(el.style.top || 0);
-    if (worldToScreenY(y) > 680) el.remove();
+    if (y - 36000 + displayedOffset() > 680) el.remove();
   });
   trafficCars.forEach(c => {
     if (c.y > 550 || c.y < -380) {
@@ -2067,6 +2153,7 @@ function choose(key) {
   }
 
   setLocked(true);
+  const myStep = ++stepSeq;   // late timers of this move must not touch the next (chained) move
   const copycatVisibleAtChoice = copycatVisible;
   planTrial(trial + 1); // fix the next trial's phase/copycat now, before traffic is set up for it
   // rt < 0 means the key was pressed (and buffered) shortly before the trial opened.
@@ -2094,11 +2181,15 @@ function choose(key) {
 
     worldOffset += CFG.brakeStepDist;
     const w = $('world');
-    w.style.transition = `transform ${brakeMs}ms ease-out`;
-    if (motionSmooth()) scrollDivider(brakeMs, 'ease-out');
-    requestAnimationFrame(() => {
-      w.style.transform = `translateY(${worldOffset}px)`;
-    });
+    if (crawlActive()) {
+      glideTo(brakeMs);
+    } else {
+      w.style.transition = `transform ${brakeMs}ms ease-out`;
+      if (motionSmooth()) scrollDivider(brakeMs, 'ease-out');
+      requestAnimationFrame(() => {
+        w.style.transform = `translateY(${worldOffset}px)`;
+      });
+    }
 
     // Outcome first (in continuous mode at ~65% of the move), then the early-press window opens.
     let outcome = null;
@@ -2140,7 +2231,7 @@ function choose(key) {
       maybeStartCopycatFor(trial + 1);
 
       setTimeout(nextDecision, nextTrialDelayMs);
-    }, brakeMs);
+    }, endTime(brakeMs));
     return;
   }
 
@@ -2227,6 +2318,7 @@ function choose(key) {
       }, Math.round(driveDuration * 0.60));
 
       setTimeout(() => {
+        if (stepSeq !== myStep) return;
         p.classList.remove('steer-left', 'steer-right');
       }, Math.round(driveDuration * 0.88));
     }
@@ -2301,20 +2393,24 @@ function choose(key) {
     worldOffset += stepDist;
     const w = $('world');
     const base = $('roadbase');
-    if (motionSmooth()) {
-      scrollDivider(driveDuration, CFG.smooth.ease);
+    if (crawlActive()) {
+      glideTo(driveDuration);
     } else {
-      base.classList.add('driving');
-      if (isShoulder) base.classList.add('fast');
-      else if (isJammedNormative) base.classList.add('crawl');
+      if (motionSmooth()) {
+        scrollDivider(driveDuration, CFG.smooth.ease);
+      } else {
+        base.classList.add('driving');
+        if (isShoulder) base.classList.add('fast');
+        else if (isJammedNormative) base.classList.add('crawl');
+      }
+      w.style.transition = `transform ${driveDuration}ms ${motionSmooth() ? CFG.smooth.ease : 'cubic-bezier(.22,.72,.22,1)'}`;
+      requestAnimationFrame(() => {
+        w.style.transform = `translateY(${worldOffset}px)`;
+      });
     }
 
-    w.style.transition = `transform ${driveDuration}ms ${motionSmooth() ? CFG.smooth.ease : 'cubic-bezier(.22,.72,.22,1)'}`;
-    requestAnimationFrame(() => {
-      w.style.transform = `translateY(${worldOffset}px)`;
-    });
-
     setTimeout(() => {
+      if (stepSeq !== myStep) return; // the next move already started
       p.classList.remove('blink-left', 'blink-right', 'steer-left', 'steer-right');
       p.classList.add('braking');
     }, Math.round(driveDuration * 0.88));
@@ -2358,7 +2454,7 @@ function choose(key) {
       maybeStartCopycatFor(trial + 1);
 
       setTimeout(nextDecision, nextTrialDelayMs);
-    }, driveDuration);
+    }, endTime(driveDuration));
   }, turnLeadMs);
 }
 
@@ -2464,10 +2560,10 @@ function finish() {
 // =====================================================================
 // EXPERIMENTER PANEL (test mode only). Removed from the page when CFG.testMode = false.
 // =====================================================================
-const SETTINGS_KEY = 'copycat_experiment_dev_settings';
+const SETTINGS_KEY = 'copycat_experiment_dev_settings_v8';
 const CFG_DEFAULTS = JSON.parse(JSON.stringify(CFG));
 const PARAM_KEYS = ['starting', 'jamStartTrial', 'openRoadReward', 'jamNormativeReward', 'shoulderReward',
-                    'brakeCost', 'high.p', 'high.fine', 'low.p', 'low.fine'];
+                    'brakeCost', 'high.p', 'high.fine', 'low.p', 'low.fine', 'crawl.durationScale'];
 const PRE_RUN_ONLY = ['starting', 'jamStartTrial'];
 const COUNT_PRESETS = { quick: CFG_DEFAULTS.countsTest, full: CFG_DEFAULTS.countsFull };
 // Candidate payoff sets for the discussion with Yefim (fines kept as in the proposal: EV = 45 in both regimes).
@@ -2683,6 +2779,7 @@ function initDevPanel() {
 
 initDevPanel();
 updateHud();
+requestAnimationFrame(crawlFrame);
 </script>
 </body>
 </html>
