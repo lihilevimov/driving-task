@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Continuous Road Pilot V_9</title>
+<title>Traffic Jam Driving Experience</title>
 <style>
 /* ---------- THEMES ----------
    Day   = light page chrome + daylight road scene (default)
@@ -92,6 +92,9 @@ body {
 }
 .app { width: min(100%, 760px); padding-block: 12px; }
 .shell {
+  display: grid;
+  grid-template-columns: 100%;
+  grid-template-areas: "hud" "stage" "controls";
   overflow: hidden;
   border: 1px solid var(--surface-border);
   border-radius: 18px;
@@ -99,6 +102,7 @@ body {
   box-shadow: var(--shell-shadow);
 }
 .hud {
+  grid-area: hud;
   height: 62px;
   padding: 0 18px;
   display: flex;
@@ -133,6 +137,7 @@ body {
 }
 
 .stage {
+  grid-area: stage;
   position: relative;
   height: 540px;
   overflow: hidden;
@@ -539,6 +544,7 @@ body {
 }
 
 .controls {
+  grid-area: controls;
   min-height: 144px;
   display: flex;
   align-items: center;
@@ -587,6 +593,7 @@ body {
   z-index: 60;
   display: grid;
   place-items: center;
+  overflow-y: auto;
   padding: 25px;
   text-align: center;
   background: var(--overlay-bg);
@@ -669,6 +676,62 @@ body.dev-open .devpanel { transform: none; }
 .ev .warn { color: #d0473b; font-weight: 600; }
 .dev-note { margin: 7px 0 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
 .hidden { display: none !important; }
+
+/* ==========================================
+   V_10: LAYOUT THAT FITS SMALL LAPTOP SCREENS
+   On landscape screens the arrow pad sits beside the road, so HUD + road + pad need ~630px of height.
+   The whole game is then scaled (zoom) to fit the window, so nothing needs scrolling.
+   ========================================== */
+.hud-title { font-size: 15px; font-weight: 700; }
+body.layout-side .app { width: auto; }
+body.layout-side .shell {
+  grid-template-columns: 760px 210px;
+  grid-template-areas: "hud hud" "stage controls";
+}
+body.layout-side .controls {
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  min-height: 0;
+  padding: 18px 12px;
+  border-top: 0;
+  border-left: 1px solid var(--surface-border);
+}
+body.layout-side .hint { max-width: 180px; text-align: center; }
+
+/* ==========================================
+   V_10: PARTICIPANT SCREENS (consent, licence, instructions, questionnaire, debrief)
+   ========================================== */
+.overlay .card.screen { width: min(100%, 560px); max-width: 560px; text-align: start; align-self: start; margin-block: auto; }
+.screen h1 { margin: 0 0 12px; font-size: 26px; line-height: 1.25; text-wrap: balance; }
+.screen h2 { margin: 0 0 10px; font-size: 20px; line-height: 1.3; }
+.screen p { margin: 0 0 10px; }
+.screen .placeholder { color: var(--muted); font-style: italic; }
+.screen .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.screen .btn { margin: 0; }
+.screen .btn:disabled { opacity: .45; cursor: default; }
+.screen .lang-row { display: flex; justify-content: center; gap: 10px; margin-top: 18px; }
+.overlay .card.screen.center { text-align: center; }
+.screen .check { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--panel-bg); color: var(--text); cursor: pointer; }
+.screen .check input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+.screen .q { margin: 16px 0 0; }
+.screen .q > .q-label { display: block; margin-bottom: 7px; font-weight: 600; color: var(--text); line-height: 1.45; }
+.screen .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.screen .opt { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 9px; border: 1px solid var(--surface-border); background: var(--key-bg); cursor: pointer; }
+.screen .opt input { margin: 0; }
+.screen .scale { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.screen .scale .opt { padding: 6px 10px; }
+.screen .scale-ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 4px; max-width: 420px; }
+.screen input[type=number], .screen select, .screen textarea {
+  font: inherit; color: var(--text); background: var(--key-bg);
+  border: 1px solid var(--surface-border); border-radius: 8px; padding: 7px 9px;
+}
+.screen input[type=number] { width: 110px; }
+.screen textarea { width: 100%; min-height: 64px; resize: vertical; user-select: text; }
+.screen .form-error { color: #d0473b; font-weight: 600; margin-top: 10px; min-height: 1.2em; }
+.screen .keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; margin: 14px 0 6px; padding: 12px 14px; border-radius: 10px; background: var(--panel-bg); }
+.screen .keys kbd { display: inline-block; min-width: 30px; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--key-border); box-shadow: 0 2px 0 var(--key-shadow); background: var(--key-bg); color: var(--key-text); font: 700 15px 'Segoe UI', Arial, sans-serif; text-align: center; direction: ltr; }
+.screen .muted { color: var(--muted); font-size: 13px; }
 .toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 300;
   transform: translateX(-50%); padding: 9px 16px; border-radius: 10px;
@@ -744,11 +807,11 @@ html.motion-smooth .npc .car-chassis {
 </head>
 <body>
 <main class="app">
-  <section class="shell">
+  <section class="shell" dir="ltr">
     <header class="hud">
       <div>
         <div class="meta" id="phase"></div>
-        <div id="trial"></div>
+        <div id="trial" class="hud-title"></div>
       </div>
       <div class="score" id="scoreBox"><span id="pointsLabel">POINTS</span>: <span id="score">2000</span></div>
       <div class="progress hidden" id="progress"><div class="progress-fill" id="progressFill"></div></div>
@@ -781,17 +844,7 @@ html.motion-smooth .npc .car-chassis {
       <div class="feedback gain" id="gain"></div>
       <div class="feedback loss" id="loss"></div>
 
-      <div class="overlay" id="overlay">
-        <div class="card">
-          <h1 id="title">Continuous road pilot</h1>
-          <p id="intro">Complete the route with as many points as possible. Use the arrow keys or the control pad.</p>
-          <div>
-            <button class="btn" id="en">English</button>
-            <button class="btn secondary" id="he">עברית</button>
-          </div>
-          <button class="btn hidden" id="start">Start</button>
-        </div>
-      </div>
+      <div class="overlay" id="overlay"></div>
     </div>
 
     <footer class="controls">
@@ -887,6 +940,15 @@ html.motion-smooth .npc .car-chassis {
     <div class="dev-row" id="payoffPresets"></div>
     <div class="ev" id="evSummary"></div>
     <p class="dev-note">Starting points and jam start are fixed once the run begins. All other values apply from the next trial.</p>
+  </section>
+
+  <section class="dev-sec">
+    <h3>Participant screens</h3>
+    <div class="seg" data-setting="screens">
+      <button data-v="full">Full participant flow</button>
+      <button data-v="skip">Game only</button>
+    </div>
+    <p class="dev-note">Full: language, consent, licence question, instructions, drive, questionnaire and debrief, exactly as participants will see them. Game only: straight to the drive (applies on the next restart).</p>
   </section>
 
   <section class="dev-sec">
@@ -1032,31 +1094,143 @@ function getLaneSlots(lane, pLaneIdx) {
 const TXT = {
   en: {
     points: 'POINTS',
-    start: 'Start',
-    title: 'Continuous road pilot',
-    intro: 'Complete the route with as many points as possible. Use the arrow keys or the control pad.',
+    title: 'Traffic Jam Driving Experience',
     hint: 'You can navigate using the mouse or the keyboard arrow keys.',
     finePrefix: 'FINE: −',
-    done: 'Pilot complete',
     download: 'Download JSON Data',
     copy: 'Copy data',
-    restart: 'Restart'
+    restart: 'Restart',
+    cont: 'Continue',
+    required: 'Please answer all the questions marked above before continuing.',
+    consentTitle: 'Consent to participate',
+    consentBody: [
+      'In this study we examine how drivers behave in traffic jams. You will drive along a congested road in a short computer task, and then answer a few questions. The study takes about <span class="placeholder">[X]</span> minutes.',
+      'Participation is voluntary. You may stop at any time, without any consequence.',
+      'You will receive <span class="placeholder">[a fixed payment]</span> for taking part, plus a bonus based on the points you collect during the drive.',
+      'Your answers are anonymous and will be used for research purposes only.',
+      '<span class="placeholder">[The full consent text will be completed according to the ethics committee’s requirements.]</span>'
+    ],
+    consentCheck: 'I have read the above and agree to take part in the study.',
+    licenseTitle: 'Before we start',
+    licenseQ: 'Do you hold a valid driver’s license?',
+    yes: 'Yes', no: 'No', notSure: 'Not sure',
+    ineligibleTitle: 'Thank you for your interest',
+    ineligibleBody: 'This study is open only to people who hold a valid driver’s license, so you cannot take part this time.',
+    introBody: [
+      'You are about to drive along a busy road. At each step you choose how to move on, and your car carries out your choice.',
+      'Every step forward earns points. You start with {start} points, and at the end of the drive your points are converted into a bonus: the more points you finish with, the larger your bonus.',
+      'Drive the way you normally drive in a traffic jam.'
+    ],
+    keyUp: 'Drive forward', keySide: 'Change lane', keyDown: 'Brake',
+    keysNote: 'Use the arrow keys on your keyboard or the arrow buttons next to the road.',
+    go: 'Start driving',
+    arrivedTitle: 'You have reached your destination',
+    arrivedBody: 'You finished the drive with <b>{score}</b> points. A few short questions follow.',
+    q1Title: 'About the drive',
+    qPurpose: 'In your own words, what do you think this study was about?',
+    qUnusual: 'Did you notice anything unusual during the drive? If so, please describe it briefly.',
+    qRealism: 'How realistic did the drive feel?',
+    scaleLow: '1 = not at all', scaleHigh: '7 = very realistic',
+    q2Title: 'Other vehicles',
+    qShoulder: 'During the drive, did you see other vehicles driving on the road shoulder?',
+    qDrivers: 'Who do you think was driving the other vehicles on the road?',
+    optParticipants: 'Other participants in the study', optComputer: 'The computer',
+    q3Title: 'About you',
+    qAge: 'Age', qGender: 'Gender',
+    gFemale: 'Female', gMale: 'Male', gOther: 'Other', gNa: 'Prefer not to say',
+    qLicenseYears: 'How many years have you held a driver’s license?',
+    qFreq: 'How often do you drive?',
+    fDaily: 'Every day', fWeekly: 'A few times a week', fOnce: 'About once a week', fLess: 'Less than once a week',
+    choose: 'Choose…',
+    debriefTitle: 'Thank you — about this study',
+    debriefBody: [
+      'Thank you for taking part. We can now tell you more about the study.',
+      'The study examines how people learn to follow or break a traffic rule (driving on the road shoulder), and how fines of different frequency and size affect that behaviour. Some participants saw other vehicles driving on the shoulder, and some did not.',
+      'The other vehicles on the road, including any vehicles you saw driving on the shoulder, were controlled by the computer and not by other participants. We did not tell you this in advance, because knowing it could have changed the way people drive in the task.',
+      'If you prefer that we do not use your data, tick the box below. This does not affect your payment.',
+    ],
+    withdraw: 'Please do not use my data.',
+    debriefAfter: [
+      'Please do not share the details of the study with others who may take part in it.',
+      '<span class="placeholder">[Researcher contact details and the ethics approval number will be added here.]</span>'
+    ],
+    finishBtn: 'Finish',
+    thanksTitle: 'Thank you!',
+    thanksBody: 'You may now close this window.',
+    testEndTitle: 'Drive complete',
+    langTitle: 'Choose a language'
   },
   he: {
     points: 'נקודות',
-    start: 'התחלה',
-    title: 'פיילוט כביש רציף',
-    intro: 'המטרה היא לסיים את המסלול עם מספר הנקודות הגבוה ביותר. ניתן להשתמש במקשי החצים או בלוח שעל המסך.',
+    title: 'חוויית נהיגה בפקק',
     hint: 'ניתן לנווט באמצעות העכבר או חיצי המקלדת.',
     finePrefix: 'קנס: −',
-    done: 'הפיילוט הסתיים',
     download: 'הורדת נתונים (JSON)',
     copy: 'העתקת נתונים',
-    restart: 'הפעלה מחדש'
+    restart: 'הפעלה מחדש',
+    cont: 'המשך',
+    required: 'יש לענות על כל השאלות שלמעלה לפני שממשיכים.',
+    consentTitle: 'הסכמה להשתתפות במחקר',
+    consentBody: [
+      'במחקר זה אנו בודקים כיצד נהגים מתנהגים בפקקי תנועה. במסגרת המחקר תנהגו בכביש עמוס במשימה ממוחשבת קצרה, ולאחר מכן תענו על מספר שאלות. ההשתתפות אורכת כ-<span class="placeholder">[X]</span> דקות.',
+      'ההשתתפות במחקר היא מרצון. ניתן להפסיק בכל שלב, ללא כל השלכה.',
+      'על ההשתתפות תקבלו <span class="placeholder">[תשלום קבוע]</span>, ובנוסף בונוס שנקבע לפי הנקודות שתצברו במהלך הנסיעה.',
+      'התשובות אנונימיות וישמשו למטרות מחקר בלבד.',
+      '<span class="placeholder">[הנוסח המלא של טופס ההסכמה יושלם לפי דרישות ועדת האתיקה.]</span>'
+    ],
+    consentCheck: 'קראתי את האמור לעיל ואני מסכים/ה להשתתף במחקר.',
+    licenseTitle: 'לפני שמתחילים',
+    licenseQ: 'האם יש לכם רישיון נהיגה בתוקף?',
+    yes: 'כן', no: 'לא', notSure: 'לא בטוח/ה',
+    ineligibleTitle: 'תודה על ההתעניינות',
+    ineligibleBody: 'המחקר מיועד לבעלי רישיון נהיגה בתוקף בלבד, ולכן לא ניתן להשתתף בו הפעם.',
+    introBody: [
+      'עוד רגע תנהגו בכביש עמוס. בכל שלב תבחרו איך להמשיך, והרכב שלכם יבצע את הבחירה.',
+      'כל התקדמות מזכה בנקודות. אתם מתחילים עם {start} נקודות, ובסוף הנסיעה הנקודות יומרו לבונוס: ככל שתסיימו עם יותר נקודות, הבונוס יהיה גבוה יותר.',
+      'נהגו כפי שאתם נוהגים בדרך כלל בפקק.'
+    ],
+    keyUp: 'נסיעה קדימה', keySide: 'מעבר נתיב', keyDown: 'בלימה',
+    keysNote: 'אפשר להשתמש בחיצי המקלדת או בכפתורי החצים שליד הכביש.',
+    go: 'יוצאים לדרך',
+    arrivedTitle: 'הגעתם ליעד',
+    arrivedBody: 'סיימתם את הנסיעה עם <b>{score}</b> נקודות. לפניכם מספר שאלות קצרות.',
+    q1Title: 'על הנסיעה',
+    qPurpose: 'במילים שלכם, על מה לדעתכם היה המחקר?',
+    qUnusual: 'האם שמתם לב למשהו חריג במהלך הנסיעה? אם כן, תארו אותו בקצרה.',
+    qRealism: 'עד כמה הנסיעה הרגישה מציאותית?',
+    scaleLow: '1 = בכלל לא', scaleHigh: '7 = מציאותית מאוד',
+    q2Title: 'רכבים אחרים',
+    qShoulder: 'במהלך הנסיעה, האם ראיתם רכבים אחרים נוסעים בשול הדרך?',
+    qDrivers: 'מי לדעתכם נהג ברכבים האחרים שעל הכביש?',
+    optParticipants: 'משתתפים אחרים במחקר', optComputer: 'המחשב',
+    q3Title: 'פרטים עליכם',
+    qAge: 'גיל', qGender: 'מגדר',
+    gFemale: 'אישה', gMale: 'גבר', gOther: 'אחר', gNa: 'מעדיפ/ה לא לציין',
+    qLicenseYears: 'כמה שנים יש לכם רישיון נהיגה?',
+    qFreq: 'באיזו תדירות אתם נוהגים?',
+    fDaily: 'כל יום', fWeekly: 'כמה פעמים בשבוע', fOnce: 'בערך פעם בשבוע', fLess: 'פחות מפעם בשבוע',
+    choose: 'בחירה…',
+    debriefTitle: 'תודה – על המחקר',
+    debriefBody: [
+      'תודה על ההשתתפות. כעת נוכל לספר לכם יותר על המחקר.',
+      'המחקר בודק כיצד אנשים לומדים לציית לחוק תנועה או לעבור עליו (נסיעה בשול הדרך), וכיצד קנסות בתדירות ובגובה שונים משפיעים על ההתנהגות הזו. חלק מהמשתתפים ראו רכבים אחרים נוסעים בשול, וחלקם לא.',
+      'הרכבים האחרים על הכביש, כולל רכבים שאולי ראיתם נוסעים בשול, נשלטו על ידי המחשב ולא על ידי משתתפים אחרים. לא סיפרנו לכם זאת מראש, משום שהידיעה הייתה עלולה לשנות את אופן הנהיגה במשימה.',
+      'אם אתם מעדיפים שלא נשתמש בנתונים שלכם, סמנו את התיבה למטה. הדבר לא ישפיע על התשלום.'
+    ],
+    withdraw: 'אני מבקש/ת שלא להשתמש בנתונים שלי.',
+    debriefAfter: [
+      'נבקש שלא לשתף את פרטי המחקר עם אחרים שעשויים להשתתף בו.',
+      '<span class="placeholder">[פרטי הקשר של החוקרים ומספר אישור ועדת האתיקה יתווספו כאן.]</span>'
+    ],
+    finishBtn: 'סיום',
+    thanksTitle: 'תודה!',
+    thanksBody: 'אפשר לסגור את החלון.',
+    testEndTitle: 'הנסיעה הסתיימה',
+    langTitle: 'בחירת שפה'
   }
 };
 
-const VERSION = 'V_9';
+const VERSION = 'V_10';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
 const isJamTrial = t => t >= CFG.jamStartTrial;
@@ -1501,19 +1675,14 @@ function setLang(v) {
   document.documentElement.lang = v;
   document.documentElement.dir = v === 'he' ? 'rtl' : 'ltr';
   $('pointsLabel').textContent = TXT[v].points;
-  $('title').textContent = TXT[v].title;
-  $('intro').textContent = TXT[v].intro;
   $('hint').textContent = TXT[v].hint;
-  $('start').textContent = TXT[v].start;
-  $('en').classList.toggle('active-lang', v === 'en');
-  $('he').classList.toggle('active-lang', v === 'he');
-  $('start').classList.remove('hidden');
+  $('hint').setAttribute('dir', v === 'he' ? 'rtl' : 'ltr');
+  $('trial').setAttribute('dir', v === 'he' ? 'rtl' : 'ltr');
+  $('scoreBox').setAttribute('dir', v === 'he' ? 'rtl' : 'ltr');
+  updateHud();
 }
 
-$('en').onclick = () => setLang('en');
-$('he').onclick = () => setLang('he');
-
-$('start').onclick = () => {
+function startGame() {
   if (CFG.testMode) {
     // Conditions come from the experimenter panel (already applied to the globals).
     assignmentSource = 'experimenter_panel';
@@ -1538,7 +1707,7 @@ $('start').onclick = () => {
   } else {
     nextDecision();
   }
-};
+}
 
 // ==========================================
 // 4. STAGGERED SURROUNDING TRAFFIC ENGINE (v25 - 4-Car Far Lane & Single-Rear-Car Invariant)
@@ -2074,15 +2243,16 @@ function showCenterExpandingFeedback(el, text, durationMs, newScoreVal, pulseTyp
 }
 
 function updateHud() {
-  if (!running) {
+  const devInfo = CFG.testMode && running && document.body.classList.contains('dev-open');
+  if (devInfo) {
+    // Phase names are shown only to the experimenter (they would reveal the design to participants).
+    const ph = phaseOf(trial);
+    $('phase').textContent = 'TEST · ' + PHASE_LABEL[ph] + (isManual() ? ' · manual' : '');
+    $('trial').textContent = isManual() ? `Trial ${trial}` : `Trial ${trial} / ${totalTrials()}`;
+  } else {
     $('phase').textContent = '';
-    $('trial').textContent = '';
-    return;
+    $('trial').textContent = TXT[lang].title;
   }
-  const ph = phaseOf(trial);
-  // Phase names are shown only in test mode (they would reveal the design to participants).
-  $('phase').textContent = CFG.testMode ? 'TEST · ' + PHASE_LABEL[ph] + (isManual() ? ' · manual' : '') : '';
-  $('trial').textContent = isManual() ? `Trial ${trial}` : `Trial ${trial} / ${totalTrials()}`;
   updateProgress();
 }
 
@@ -2467,7 +2637,7 @@ function choose(key) {
 
 document.addEventListener('keydown', e => {
   // Typing in the experimenter panel's number fields must not drive the car.
-  if (e.target && e.target.matches && e.target.matches('#devPanel input, #devPanel select')) return;
+  if (e.target && e.target.matches && e.target.matches('input, select, textarea')) return;
   if (CFG.testMode && e.key === '`') { setPanelOpen(!document.body.classList.contains('dev-open')); return; }
   if (e.key.startsWith('Arrow')) e.preventDefault();
   // Ignore auto-repeat from a held key: every choice must be a fresh press
@@ -2498,6 +2668,8 @@ function buildPayload() {
     screen: { w: window.screen.width, h: window.screen.height, viewportW: window.innerWidth, viewportH: window.innerHeight },
     config: CFG,
     testSettings: CFG.testMode ? SETTINGS : undefined,
+    lang,
+    participant,
     finalScore: score,
     records,
     events
@@ -2549,25 +2721,201 @@ function finish() {
   bufferOpen = false;
   bufferedKey = null;
   updateProgress();
-  $('overlay').classList.remove('hidden');
-  $('overlay').innerHTML = `
-    <div class="card">
-      <h1>${TXT[lang].done}</h1>
-      <p>${TXT[lang].points}: <b>${score}</b></p>
-      <button class="btn" id="download">${TXT[lang].download}</button>
-      <button class="btn secondary" id="copyData">${TXT[lang].copy}</button>
-      <button class="btn secondary" onclick="location.reload()">${TXT[lang].restart}</button>
-    </div>
-  `;
-  $('download').onclick = downloadData;
-  $('copyData').onclick = copyData;
+  updateHud();
+  showScreen(screensMode() === 'skip' ? 'testEnd' : 'arrived');
   renderDevStatus();
 }
 
 // =====================================================================
+// V_10: PARTICIPANT SCREENS
+// Language → consent → licence → instructions → [drive] → arrived → questionnaire (3 pages) → debrief → thanks.
+// The questionnaire pages go from open questions to specific ones (funnel), and there is no way back,
+// so a later question cannot shape an earlier answer. Everything is stored in the data file under "participant".
+// =====================================================================
+const participant = { lang: null, screens: [], consent: null, license: null, questionnaire: {}, withdrawData: null };
+const screensMode = () => (CFG.testMode ? (SETTINGS.screens || 'full') : 'full');
+const fill = (str, vars) => str.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function radioGroup(name, options) {
+  return `<div class="opts" role="radiogroup">${options.map(([v, label]) =>
+    `<label class="opt"><input type="radio" name="${name}" value="${v}"> ${label}</label>`).join('')}</div>`;
+}
+function scale7(name, t) {
+  const opts = [1, 2, 3, 4, 5, 6, 7].map(n => `<label class="opt"><input type="radio" name="${name}" value="${n}"> ${n}</label>`).join('');
+  return `<div class="scale" dir="ltr">${opts}</div><div class="scale-ends"><span>${t.scaleLow}</span><span>${t.scaleHigh}</span></div>`;
+}
+function readForm(root) {
+  const out = {};
+  root.querySelectorAll('input, select, textarea').forEach(el => {
+    if (!el.name) return;
+    if (el.type === 'radio') { if (el.checked) out[el.name] = el.value; else if (!(el.name in out)) out[el.name] = ''; }
+    else if (el.type === 'checkbox') out[el.name] = el.checked;
+    else out[el.name] = el.value.trim();
+  });
+  return out;
+}
+
+const SCREENS = {
+  lang: () => ({
+    cls: 'center',
+    html: `<h1 dir="rtl">${TXT.he.title}</h1><h1 dir="ltr">${TXT.en.title}</h1>
+      <p class="muted">${TXT.he.langTitle} · ${TXT.en.langTitle}</p>
+      <div class="lang-row"><button class="btn" id="langHe">עברית</button><button class="btn" id="langEn">English</button></div>`,
+    mount: () => {
+      const pick = v => {
+        setLang(v);
+        participant.lang = v;
+        if (screensMode() === 'skip') startGame();
+        else showScreen('consent');
+      };
+      $('langHe').onclick = () => pick('he');
+      $('langEn').onclick = () => pick('en');
+    }
+  }),
+  consent: t => ({
+    html: `<h1>${t.consentTitle}</h1>${t.consentBody.map(p => `<p>${p}</p>`).join('')}
+      <label class="check"><input type="checkbox" id="consentBox"> <span>${t.consentCheck}</span></label>
+      <div class="actions"><button class="btn" id="next" disabled>${t.cont}</button></div>`,
+    mount: () => {
+      $('consentBox').onchange = () => { $('next').disabled = !$('consentBox').checked; };
+      $('next').onclick = () => { participant.consent = { agreed: true, iso: new Date().toISOString() }; showScreen('license'); };
+    }
+  }),
+  license: t => ({
+    html: `<h1>${t.licenseTitle}</h1>
+      <div class="q"><span class="q-label">${t.licenseQ}</span>${radioGroup('license', [['yes', t.yes], ['no', t.no]])}</div>
+      <div class="actions"><button class="btn" id="next" disabled>${t.cont}</button></div>`,
+    mount: root => {
+      root.querySelectorAll('input[name=license]').forEach(r => r.onchange = () => { $('next').disabled = false; });
+      $('next').onclick = () => {
+        participant.license = readForm(root).license;
+        showScreen(participant.license === 'yes' ? 'intro' : 'ineligible');
+      };
+    }
+  }),
+  ineligible: t => ({
+    cls: 'center',
+    html: `<h1>${t.ineligibleTitle}</h1><p>${t.ineligibleBody}</p>${CFG.testMode ? `<div class="actions" style="justify-content:center"><button class="btn secondary" onclick="location.reload()">${t.restart}</button></div>` : ''}`
+  }),
+  intro: t => ({
+    html: `<h1>${t.title}</h1>${t.introBody.map(p => `<p>${fill(p, { start: CFG.starting.toLocaleString('en-US') })}</p>`).join('')}
+      <div class="keys">
+        <kbd>↑</kbd><span>${t.keyUp}</span>
+        <kbd>← →</kbd><span>${t.keySide}</span>
+        <kbd>↓</kbd><span>${t.keyDown}</span>
+      </div>
+      <p class="muted">${t.keysNote}</p>
+      <div class="actions"><button class="btn" id="go">${t.go}</button></div>`,
+    mount: () => { $('go').onclick = () => { $('go').blur(); startGame(); }; }
+  }),
+  arrived: t => ({
+    cls: 'center',
+    html: `<h1>${t.arrivedTitle}</h1><p>${fill(t.arrivedBody, { score })}</p>
+      <div class="actions" style="justify-content:center"><button class="btn" id="next">${t.cont}</button></div>`,
+    mount: () => { $('next').onclick = () => showScreen('q1'); }
+  }),
+  q1: t => questionPage(t, t.q1Title, `
+      <div class="q"><span class="q-label">${t.qPurpose}</span><textarea name="purpose"></textarea></div>
+      <div class="q"><span class="q-label">${t.qUnusual}</span><textarea name="unusual"></textarea></div>
+      <div class="q"><span class="q-label">${t.qRealism}</span>${scale7('realism', t)}</div>`,
+    ['realism'], 'q2'),
+  q2: t => questionPage(t, t.q2Title, `
+      <div class="q"><span class="q-label">${t.qShoulder}</span>${radioGroup('saw_shoulder_vehicles', [['yes', t.yes], ['no', t.no], ['not_sure', t.notSure]])}</div>
+      <div class="q"><span class="q-label">${t.qDrivers}</span>${radioGroup('other_drivers', [['participants', t.optParticipants], ['computer', t.optComputer], ['not_sure', t.notSure]])}</div>`,
+    ['saw_shoulder_vehicles', 'other_drivers'], 'q3'),
+  q3: t => questionPage(t, t.q3Title, `
+      <div class="q"><span class="q-label">${t.qAge}</span><input type="number" name="age" min="16" max="99" inputmode="numeric"></div>
+      <div class="q"><span class="q-label">${t.qGender}</span>${radioGroup('gender', [['female', t.gFemale], ['male', t.gMale], ['other', t.gOther], ['na', t.gNa]])}</div>
+      <div class="q"><span class="q-label">${t.qLicenseYears}</span><input type="number" name="license_years" min="0" max="80" step="0.5" inputmode="decimal"></div>
+      <div class="q"><span class="q-label">${t.qFreq}</span><select name="driving_frequency">
+        <option value="">${t.choose}</option><option value="daily">${t.fDaily}</option><option value="weekly">${t.fWeekly}</option>
+        <option value="once_a_week">${t.fOnce}</option><option value="less">${t.fLess}</option></select></div>`,
+    ['age', 'gender', 'license_years', 'driving_frequency'], 'debrief'),
+  debrief: t => ({
+    html: `<h1>${t.debriefTitle}</h1>${t.debriefBody.map(p => `<p>${p}</p>`).join('')}
+      <label class="check"><input type="checkbox" id="withdrawBox"> <span>${t.withdraw}</span></label>
+      <div style="margin-top:14px">${t.debriefAfter.map(p => `<p>${p}</p>`).join('')}</div>
+      <div class="actions"><button class="btn" id="next">${t.finishBtn}</button></div>`,
+    mount: () => {
+      $('next').onclick = () => {
+        participant.withdrawData = $('withdrawBox').checked;
+        showScreen('thanks');
+      };
+    }
+  }),
+  thanks: t => ({
+    cls: 'center',
+    html: `<h1>${t.thanksTitle}</h1><p>${t.thanksBody}</p>${testEndButtons(t)}`,
+    mount: mountTestEndButtons
+  }),
+  testEnd: t => ({
+    cls: 'center',
+    html: `<h1>${t.testEndTitle}</h1><p>${TXT[lang].points}: <b>${score}</b></p>${testEndButtons(t)}`,
+    mount: mountTestEndButtons
+  })
+};
+
+function testEndButtons(t) {
+  if (!CFG.testMode) return '';
+  return `<div class="actions" style="justify-content:center;flex-wrap:wrap">
+    <button class="btn" id="download">${t.download}</button>
+    <button class="btn secondary" id="copyData">${t.copy}</button>
+    <button class="btn secondary" onclick="location.reload()">${t.restart}</button></div>`;
+}
+function mountTestEndButtons() {
+  if (!CFG.testMode) return;
+  $('download').onclick = downloadData;
+  $('copyData').onclick = copyData;
+}
+
+// One questionnaire page: all listed fields are required; the open questions are optional.
+function questionPage(t, title, body, required, nextName) {
+  return {
+    html: `<h2>${title}</h2>${body}<div class="form-error" id="formError"></div>
+      <div class="actions"><button class="btn" id="next">${t.cont}</button></div>`,
+    mount: root => {
+      $('next').onclick = () => {
+        const answers = readForm(root);
+        const missing = required.filter(k => answers[k] === '' || answers[k] === undefined);
+        if (missing.length) { $('formError').textContent = t.required; return; }
+        Object.assign(participant.questionnaire, answers);
+        showScreen(nextName);
+      };
+    }
+  };
+}
+
+function showScreen(name) {
+  participant.screens.push({ name, iso: new Date().toISOString() });
+  const t = TXT[lang] || TXT.en;
+  const sc = SCREENS[name](t);
+  const ov = $('overlay');
+  ov.classList.remove('hidden');
+  ov.innerHTML = `<div class="card screen ${sc.cls || ''}" dir="${lang === 'he' ? 'rtl' : 'ltr'}">${sc.html}</div>`;
+  ov.scrollTop = 0;
+  if (sc.mount) sc.mount(ov);
+}
+
+// ---------- Fit the game to the window (14" laptops included) ----------
+function fitLayout() {
+  const app = document.querySelector('.app');
+  if (!app) return;
+  app.style.zoom = 1;
+  const side = window.innerWidth >= 1000 && window.innerWidth / window.innerHeight >= 1.2;
+  document.body.classList.toggle('layout-side', side);
+  const panelW = (document.body.classList.contains('dev-open') && window.innerWidth >= 1150) ? 340 : 0;
+  const availW = window.innerWidth - panelW - 32;
+  const availH = window.innerHeight - 8;
+  const k = Math.min(1, availW / app.offsetWidth, availH / app.offsetHeight);
+  app.style.zoom = k.toFixed(3);
+}
+window.addEventListener('resize', fitLayout);
+
+// =====================================================================
 // EXPERIMENTER PANEL (test mode only). Removed from the page when CFG.testMode = false.
 // =====================================================================
-const SETTINGS_KEY = 'copycat_experiment_dev_settings_v8';
+const SETTINGS_KEY = 'copycat_experiment_dev_settings_v10';
 const CFG_DEFAULTS = JSON.parse(JSON.stringify(CFG));
 const PARAM_KEYS = ['starting', 'jamStartTrial', 'openRoadReward', 'jamNormativeReward', 'shoulderReward',
                     'brakeCost', 'high.p', 'high.fine', 'low.p', 'low.fine', 'crawl.durationScale'];
@@ -2594,7 +2942,7 @@ function defaultSettings() {
     runMode: 'scripted', manualPhase: 'baseline',
     counts: { ...CFG_DEFAULTS.countsTest },
     social: 'experimental', det: 'high', shoulder: 'stay',
-    fineOverride: 'random', theme: CFG_DEFAULTS.theme, lang: null, panelOpen: true,
+    fineOverride: 'random', theme: CFG_DEFAULTS.theme, lang: null, panelOpen: false, screens: 'full',
     feedbackStyle: CFG_DEFAULTS.feedbackStyle,
     motion: CFG_DEFAULTS.motion,
     params
@@ -2633,6 +2981,9 @@ function setPanelOpen(open) {
   document.body.classList.toggle('dev-open', open);
   SETTINGS.panelOpen = open;
   saveSettings();
+  updateHud();
+  fitLayout();
+  setTimeout(fitLayout, 300); // after the panel's slide-in
 }
 
 function setSetting(name, v) {
@@ -2647,6 +2998,7 @@ function setSetting(name, v) {
   else if (name === 'fineOverride') SETTINGS.fineOverride = v;
   else if (name === 'theme') { SETTINGS.theme = v; applyTheme(v); }
   else if (name === 'feedbackStyle') SETTINGS.feedbackStyle = v;
+  else if (name === 'screens') SETTINGS.screens = v;
   else if (name === 'motion') { SETTINGS.motion = v; applyMotion(); }
   saveSettings();
   renderDev();
@@ -2693,7 +3045,7 @@ function renderDev() {
   document.querySelectorAll('#devPanel .seg').forEach(seg => {
     const map = { runMode: SETTINGS.runMode, manualPhase: SETTINGS.manualPhase, social: SETTINGS.social, det: SETTINGS.det,
                   shoulder: SETTINGS.shoulder, fineOverride: SETTINGS.fineOverride, theme: SETTINGS.theme,
-                  feedbackStyle: SETTINGS.feedbackStyle, motion: SETTINGS.motion };
+                  feedbackStyle: SETTINGS.feedbackStyle, motion: SETTINGS.motion, screens: SETTINGS.screens };
     seg.querySelectorAll('button[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === map[seg.dataset.setting])));
   });
   const manual = SETTINGS.runMode === 'manual';
@@ -2780,12 +3132,13 @@ function initDevPanel() {
 
   // On narrow screens the panel covers the game, so it starts closed there (open it with the ⚙ button).
   setPanelOpen(SETTINGS.panelOpen && window.innerWidth >= 900);
-  if (SETTINGS.lang) setLang(SETTINGS.lang);
   renderDev();
 }
 
 initDevPanel();
-updateHud();
+setLang('en');
+showScreen('lang');
+fitLayout();
 requestAnimationFrame(crawlFrame);
 </script>
 </body>
