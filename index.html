@@ -695,6 +695,8 @@ body.dev-open .devpanel { transform: none; }
 .ev { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--panel-bg); line-height: 1.6; font-variant-numeric: tabular-nums; }
 .ev .warn { color: #d0473b; font-weight: 600; }
 .dev-note { margin: 7px 0 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.dev-check { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; font-size: 12.5px; cursor: pointer; }
+.dev-check input { margin-top: 2px; }
 .hidden { display: none !important; }
 
 /* ==========================================
@@ -845,6 +847,17 @@ html.motion-smooth .npc .car-chassis {
   border: 1px solid var(--surface-border); box-shadow: 0 2px 8px rgba(20, 30, 50, .12);
 }
 .navsvg { display: block; width: 86px; height: 122px; }
+.navmap { position: relative; }
+/* V_16: "You have arrived" on the map when the marker reaches the flag */
+.nav-arrived {
+  position: absolute; left: 50%; top: 21%; transform: translate(-50%, 4px);
+  max-width: 92%; padding: 3px 8px; border-radius: 999px; text-align: center;
+  background: #1b9450; color: #fff; font: 700 10px/1.25 'Segoe UI', Arial, sans-serif;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25); opacity: 0; pointer-events: none;
+  transition: opacity .45s ease, transform .45s ease;
+}
+body.layout-side .nav-arrived { font-size: 13px; padding: 5px 12px; white-space: nowrap; }
+.nav-arrived.show { opacity: 1; transform: translate(-50%, 0); }
 body.layout-side .navsvg { width: 168px; height: 238px; }
 .nm-bg { fill: var(--map-bg); }
 .nm-block { fill: var(--map-block); }
@@ -866,7 +879,6 @@ body.layout-side .navsvg { width: 168px; height: 238px; }
     <header class="hud">
       <div>
         <div class="hud-left">
-          <button class="theme-toggle" id="themeToggle" type="button"></button>
           <div>
             <div class="meta" id="phase"></div>
             <div id="trial" class="hud-title"></div>
@@ -929,9 +941,9 @@ body.layout-side .navsvg { width: 168px; height: 238px; }
           <path class="nm-street" d="M0 122 L 120 116"/>
           <path class="nm-street" d="M98 0 L 104 170"/>
           <path class="nm-street" d="M18 0 L 22 170"/>
-          <path id="navRoute" class="nm-casing" d="M60 160 C 60 140, 38 134, 39 112 S 82 90, 81 68 S 57 44, 60 22"/>
-          <path class="nm-route" d="M60 160 C 60 140, 38 134, 39 112 S 82 90, 81 68 S 57 44, 60 22"/>
-          <path id="navDone" class="nm-done" d="M60 160 C 60 140, 38 134, 39 112 S 82 90, 81 68 S 57 44, 60 22"/>
+          <path id="navRoute" class="nm-casing" d="M60 160 C 60 132, 53 116, 54 94 S 66 52, 60 22"/>
+          <path class="nm-route" d="M60 160 C 60 132, 53 116, 54 94 S 66 52, 60 22"/>
+          <path id="navDone" class="nm-done" d="M60 160 C 60 132, 53 116, 54 94 S 66 52, 60 22"/>
           <circle class="nm-start" cx="60" cy="160" r="3.6"/>
           <line class="nm-pole" x1="60" y1="22" x2="60" y2="5"/>
           <rect x="60.6" y="5" width="12" height="8" fill="url(#nmCheck)" stroke="#1f2630" stroke-width=".6"/>
@@ -941,6 +953,7 @@ body.layout-side .navsvg { width: 168px; height: 238px; }
             <path d="M0 -3.6 L 2.9 2.7 L 0 1.3 L -2.9 2.7 Z" fill="#ffffff"/>
           </g>
         </svg>
+        <div class="nav-arrived" id="navArrived" dir="auto"></div>
       </div>
       <div class="pad" dir="ltr">
         <button class="key up" data-key="ArrowUp">↑</button>
@@ -1018,23 +1031,8 @@ body.layout-side .navsvg { width: 168px; height: 238px; }
   </section>
 
   <section class="dev-sec">
-    <h3>Payoffs</h3>
-    <div class="grid2">
-      <label>Starting points <input type="number" step="1" data-param="starting"></label>
-      <label>Jam starts at trial <input type="number" min="1" step="1" data-param="jamStartTrial"></label>
-      <label>Open road <input type="number" step="1" data-param="openRoadReward"></label>
-      <label>Jam: road <input type="number" step="1" data-param="jamNormativeReward"></label>
-      <label>Jam: shoulder <input type="number" step="1" data-param="shoulderReward"></label>
-      <label>Brake cost <input type="number" step="1" data-param="brakeCost"></label>
-      <label>Edge bump cost <input type="number" step="1" data-param="edgeBumpCost"></label>
-      <label>High: probability <input type="number" min="0" max="1" step="0.01" data-param="high.p"></label>
-      <label>High: fine <input type="number" min="0" step="1" data-param="high.fine"></label>
-      <label>Low: probability <input type="number" min="0" max="1" step="0.01" data-param="low.p"></label>
-      <label>Low: fine <input type="number" min="0" step="1" data-param="low.fine"></label>
-    </div>
-    <div class="dev-row" id="payoffPresets"></div>
-    <div class="ev" id="evSummary"></div>
-    <p class="dev-note">Starting points and jam start are fixed once the run begins. All other values apply from the next trial.</p>
+    <h3>Payoffs <span class="dev-sub">agreed 3 Nov 2026</span></h3>
+    <div class="ev" id="evSummary" style="margin-top:0"></div>
   </section>
 
   <section class="dev-sec">
@@ -1044,56 +1042,8 @@ body.layout-side .navsvg { width: 168px; height: 238px; }
       <button data-v="skip">Game only</button>
     </div>
     <p class="dev-note">Full: language, consent, licence question, instructions, drive, questionnaire and debrief, exactly as participants will see them. Game only: straight to the drive (applies on the next restart).</p>
-    <span class="dev-label">Language</span>
-    <div class="seg" data-setting="language">
-      <button data-v="choice">Choose at start</button>
-      <button data-v="en">English only</button>
-      <button data-v="he">Hebrew only</button>
-    </div>
-    <p class="dev-note">Applies on the next restart.</p>
-  </section>
-
-  <section class="dev-sec">
-    <h3>Flow</h3>
-    <div class="seg" data-setting="feedbackStyle">
-      <button data-v="continuous">Continuous (V_6)</button>
-      <button data-v="classic">Classic (V_5)</button>
-    </div>
-    <p class="dev-note">Continuous: points pop up next to the car during the move; once they appear, a key press is carried over to the next trial. Classic: big centre feedback and a pause, as before.</p>
-    <span class="dev-label">Motion</span>
-    <div class="seg" data-setting="motion">
-      <button data-v="crawl">Crawl (V_8)</button>
-      <button data-v="smooth">Smooth (V_7)</button>
-      <button data-v="original">Original (V_6)</button>
-    </div>
-    <p class="dev-note">Crawl: the road rolls continuously, speeding up and slowing down gently; points appear at about a third of the move and the next choice opens at 70%, so a quick choice keeps the car rolling.</p>
-    <div class="grid2" style="margin-top:8px">
-      <label>Crawl move duration × <input type="number" min="0.5" max="4" step="0.1" data-param="crawl.durationScale"></label>
-    </div>
-  </section>
-
-  <section class="dev-sec">
-    <h3>Scene</h3>
-    <span class="dev-label">Light along the route</span>
-    <div class="seg" data-setting="lighting">
-      <button data-v="dusk">Midday → late afternoon</button>
-      <button data-v="off">Always midday</button>
-    </div>
-    <span class="dev-label">Traffic on the open road</span>
-    <div class="seg" data-setting="ambient">
-      <button data-v="on">Light traffic</button>
-      <button data-v="off">Empty road</button>
-    </div>
-    <p class="dev-note">Light follows the trial count (the same for every participant at the same trial) and is logged as light_level. Open-road traffic never uses the shoulder and never blocks forward or a lane change.</p>
-  </section>
-
-  <section class="dev-sec">
-    <h3>Fine outcome <span class="dev-sub">for testing the display</span></h3>
-    <div class="seg" data-setting="fineOverride">
-      <button data-v="random">Random (real)</button>
-      <button data-v="always">Always</button>
-      <button data-v="never">Never</button>
-    </div>
+    <label class="dev-check"><input type="checkbox" id="devLangChoice"> Add a language choice (English / Hebrew) on the first screen</label>
+    <p class="dev-note">Without it the study runs in English. Applies on the next restart.</p>
   </section>
 
   <section class="dev-sec">
@@ -1122,13 +1072,16 @@ const CFG = {
   openRoadReward: 10,
   jamNormativeReward: 5,
   shoulderReward: 10,
-  brakeCost: 5,
+  brakeCost: 1,            // V_16: 1 point (was 5)
   // V_15: agreed with Yefim on 3 Nov 2026. Expected fine 11 in both regimes, so under deterrence the
   // shoulder (10) is worse than the road in the jam (5) by 6 points per trial.
   high: { p: 1, fine: 11 },
   low: { p: 0.1, fine: 110 },
-  // V_15: pressing toward the guardrail while already at the road edge costs the same as braking.
-  edgeBumpCost: 5,
+  // V_15: pressing toward the guardrail while already at the road edge costs the same as braking (V_16: 1 point).
+  edgeBumpCost: 1,
+  // V_16: one move on the shoulder passes this many cars of the queue (was 1), so the shoulder looks clearly faster.
+  // (Overtake & merge mode keeps 1.) The move itself takes the same time as before.
+  shoulderPassCars: 2,
   // V_15: the light changes from midday to late afternoon along the route ('dusk'), or stays at midday ('off').
   lighting: 'dusk',
   sun: {
@@ -1146,7 +1099,7 @@ const CFG = {
   theme: 'day',
   // 'choice' = language chosen on the first screen only; 'en' / 'he' = fixed language, no choice screen
   // (Yefim: online runs in English only; a student sample may get the choice).
-  languageMode: 'choice',
+  languageMode: 'en',   // V_16: English by default; the panel can add the language choice screen
   // 'continuous' (V_6) or 'classic' (V_5 centre feedback with pauses)
   feedbackStyle: 'continuous',
   interTrialMs: 0,     // pause between the end of a move and the next decision (continuous mode)
@@ -1184,7 +1137,7 @@ const CFG = {
              mergeLaneAfterMs: 1300, minGapMs: 1500 },   // 1300 = until the car beside the player has moved up (fill ends)
   // World-scroll distance per step (px). These were missing in V_3 (-> NaN, scenery froze). Values restored from V_2.
   stepDist: 330,
-  shoulderStepDist: 460,
+  shoulderStepDist: 560,   // V_16: 460 -> 560, the road rolls further in the same time on the shoulder
   brakeStepDist: 45,
   playerNormY: 338,
   playerShoulderY: 230,
@@ -1322,7 +1275,8 @@ const TXT = {
     thanksTitle: 'Thank you!',
     thanksBody: 'You may now close this window.',
     testEndTitle: 'Drive complete',
-    langTitle: 'Choose a language'
+    langTitle: 'Choose a language',
+    navArrived: 'You have arrived'
   },
   he: {
     points: 'נקודות',
@@ -1422,11 +1376,12 @@ const TXT = {
     thanksTitle: 'תודה!',
     thanksBody: 'אפשר לסגור את החלון.',
     testEndTitle: 'הנסיעה הסתיימה',
-    langTitle: 'בחירת שפה'
+    langTitle: 'בחירת שפה',
+    navArrived: 'הגעתם ליעד'
   }
 };
 
-const VERSION = 'V_15';
+const VERSION = 'V_16';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
 const isJamTrial = t => t >= CFG.jamStartTrial;
@@ -1462,8 +1417,9 @@ let lastDemoStartAt = 0;
 let queuedMerge = null;          // V_15: a lane change into the copycat's lane that waited for room
 let ambLaneBefore = null;        // V_15: the player's lane before the current move (for open-road traffic)
 let jamAbsorb = null;            // V_15: open-road cars that join the queue when the jam begins
-const feedbackStyle = () => (CFG.testMode ? SETTINGS.feedbackStyle : CFG.feedbackStyle);
-const motionMode = () => (CFG.testMode ? SETTINGS.motion : CFG.motion);
+// V_16: feedback style, motion, light, open-road traffic and payoffs are fixed in CFG (no longer in the panel).
+const feedbackStyle = () => CFG.feedbackStyle;
+const motionMode = () => CFG.motion;
 const crawlActive = () => motionMode() === 'crawl';
 const motionSmooth = () => motionMode() !== 'original';   // smooth and crawl share easing, jitter and idle creep
 const motionScale = () => (crawlActive() ? CFG.crawl.durationScale : (motionMode() === 'smooth' ? CFG.smooth.durationScale : 1));
@@ -1612,7 +1568,6 @@ function baseRecord() {
     deterrence_condition: deterrenceCondition,
     shoulder_mode: shoulderMode,
     run_mode: CFG.testMode ? SETTINGS.runMode : 'real',
-    fine_override: CFG.testMode ? SETTINGS.fineOverride : 'random',
     trial,
     phase: phaseOf(trial),
     jam: isJamTrial(trial),
@@ -1864,7 +1819,7 @@ function seedSceneryUpTo(minWorldY) {
 // most about 20% (late afternoon, never dark). The light depends only on the trial number, so every
 // participant sees the same light on the same trial; it is logged per trial as light_level.
 // =====================================================================
-const lightingMode = () => (CFG.testMode ? (SETTINGS.lighting || CFG.lighting) : CFG.lighting);
+const lightingMode = () => CFG.lighting;
 function plannedTotal() { return Object.values(activeCounts()).reduce((a, b) => a + b, 0); }
 function routeFrac(doneTrials) {
   const total = plannedTotal();
@@ -1948,7 +1903,7 @@ function navFrame(now) {
 // When the jam begins, the cars ahead join the queue and one car behind becomes the lane's rear car.
 // =====================================================================
 const amb = { pStart: 0, pEnd: 0, tStart: 0, dur: 1 };
-const ambientOn = () => (CFG.testMode ? SETTINGS.ambient !== 'off' : CFG.ambientTraffic);
+const ambientOn = () => CFG.ambientTraffic;
 const NORM_LANES = ['left', 'right'];
 function reachableLanesFrom(lane) {
   if (lane === 'shoulder') return ['right'];
@@ -2272,12 +2227,12 @@ function getRearSlotForLane(lane, pLaneIdx) {
   return CFG.rearSlotOtherY;
 }
 
-function evictRearCarsInLane(lane, durationMs) {
+function evictRearCarsInLane(lane, durationMs, targetY = 600) {
   const departing = rearCars.filter(car => car.lane === lane && !car.removed);
   rearCars = rearCars.filter(car => car.lane !== lane || car.removed);
   departing.forEach(car => {
     car.departing = true; // cancels any pending rear-slot animation scheduled earlier in this step
-    animateCarTo(car, 600, durationMs, 'cubic-bezier(.24,.72,.24,1)', 0);
+    animateCarTo(car, targetY, durationMs, 'cubic-bezier(.24,.72,.24,1)', 0);
     setTimeout(() => {
       if (car.el) car.el.remove();
       car.removed = true;
@@ -2293,6 +2248,7 @@ function updateRearTrafficForStep(durationMs, upcomingTrial, maneuverType, newPl
     maneuverType === 'stay_shoulder' ||
     maneuverType === 'overtake_and_merge'
   );
+  const shoulderPass = maneuverType === 'overtake_and_merge' ? 1 : Math.max(1, CFG.shoulderPassCars || 1);   // V_16
 
   ['right', 'left'].forEach(lane => {
     const baseRearY = getRearSlotForLane(lane, newPlayerLaneIdx);
@@ -2309,10 +2265,11 @@ function updateRearTrafficForStep(durationMs, upcomingTrial, maneuverType, newPl
       isShoulderManeuver &&
       (lane !== targetCopycatLane) &&
       (currentFrontCount > 0) &&
-      (currentFrontCount + 1 > desiredFrontCount);
+      (currentFrontCount + shoulderPass > desiredFrontCount);
 
     if (laneReceivesOvertakenCar) {
-      evictRearCarsInLane(lane, durationMs);
+      // V_16: the rear car leaves further down, below the cars overtaken on this move.
+      evictRearCarsInLane(lane, durationMs, 640 + (shoulderPass + 1) * 106);
       return;
     }
 
@@ -2452,6 +2409,9 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
       }
       const newHorizonCar = spawnTrafficCar(-140, lane);
       laneCars.unshift(newHorizonCar);
+      // V_16: one shoulder move passes CFG.shoulderPassCars cars (more cars come in from the top).
+      const pass = maneuverType === 'overtake_and_merge' ? 1 : Math.max(1, CFG.shoulderPassCars || 1);
+      for (let k = 1; k < pass; k++) laneCars.unshift(spawnTrafficCar(laneCars[0].y - 106, lane));
 
       const hold2 = demoHoldMs(lane);   // V_15: see CASE 1
       const seq2 = stepSeq;
@@ -2464,15 +2424,21 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
       // - In the FAR lane (desiredCount === 4):
       //   * On enter_shoulder (had 3 cars -> now 4 cars), all 4 cars stay in trafficCars at [12, 120, 228, 336], filling the far-lane gap!
       //   * On stay_shoulder (had 4 cars -> now 5 cars), laneCars[4] moves to rearCars and 4 cars stay at [12, 120, 228, 336]!
-      const overtakenCar = laneCars[desiredCount];
-      if (overtakenCar) {
-        trafficCars = trafficCars.filter(c => c !== overtakenCar);
-        evictRearCarsInLane(lane, moveDur);
-        rearCars.push(overtakenCar);
-        setTimeout(() => {
-          if (hold2 > 0 && stepSeq !== seq2) return;
-          animateCarTo(overtakenCar, baseRearY + overtakenCar.jitterY, moveDur, 'cubic-bezier(.24,.72,.24,1)', 0.78);
-        }, delayMs);
+      // V_16: every car below the kept ones is overtaken. The first becomes the lane's rear car,
+      // the others drive off the bottom (below it, so nothing crosses).
+      const overtaken = laneCars.slice(desiredCount);
+      if (overtaken.length) {
+        trafficCars = trafficCars.filter(c => !overtaken.includes(c));
+        evictRearCarsInLane(lane, moveDur, 640 + overtaken.length * 106);
+        overtaken.forEach((car, k) => {
+          if (k === 0) rearCars.push(car);
+          const dest = k === 0 ? baseRearY + car.jitterY : 620 + (k - 1) * 106;
+          setTimeout(() => {
+            if (k === 0 && hold2 > 0 && stepSeq !== seq2) return;
+            animateCarTo(car, dest, moveDur, 'cubic-bezier(.24,.72,.24,1)', k === 0 ? 0.78 : 0);
+            if (k > 0) setTimeout(() => { if (car.el) car.el.remove(); car.removed = true; }, moveDur + 50);
+          }, delayMs);
+        });
       }
 
       for (let idx = 0; idx < desiredCount; idx++) {
@@ -2485,15 +2451,6 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
         }, delayMs);
       }
 
-      for (let idx = desiredCount + 1; idx < laneCars.length; idx++) {
-        const extraCar = laneCars[idx];
-        trafficCars = trafficCars.filter(c => c !== extraCar);
-        animateCarTo(extraCar, 600, moveDur, 'ease-in', 0);
-        setTimeout(() => {
-          if (extraCar.el) extraCar.el.remove();
-          extraCar.removed = true;
-        }, moveDur + 50);
-      }
       return;
     }
 
@@ -2865,8 +2822,6 @@ function nextDecision() {
 
 function rollFine() {
   const rule = CFG[deterrenceCondition];
-  if (CFG.testMode && SETTINGS.fineOverride === 'always') return rule.fine;
-  if (CFG.testMode && SETTINGS.fineOverride === 'never') return 0;
   return Math.random() < rule.p ? rule.fine : 0;
 }
 
@@ -3338,6 +3293,9 @@ function finish() {
   bufferOpen = false;
   bufferedKey = null;
   setNavTarget(1, 800);
+  // V_16: the map says so when the marker reaches the flag
+  const na = $('navArrived');
+  if (na) { na.textContent = TXT[lang].navArrived; setTimeout(() => na.classList.add('show'), 750); }
   updateProgress();
   updateHud();
   showScreen(screensMode() === 'skip' ? 'testEnd' : 'arrived');
@@ -3359,7 +3317,7 @@ const participant = { lang: null, screens: [], consent: null, license: null, que
 const formState = {};
 let currentScreen = null;
 const screensMode = () => (CFG.testMode ? (SETTINGS.screens || 'full') : 'full');
-const languageMode = () => (CFG.testMode ? (SETTINGS.language || CFG.languageMode) : CFG.languageMode);
+const languageMode = () => (CFG.testMode ? (SETTINGS.langChoice ? 'choice' : 'en') : CFG.languageMode);
 const fill = (str, vars) => str.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
 const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -3641,7 +3599,7 @@ window.addEventListener('resize', fitLayout);
 // EXPERIMENTER PANEL (test mode only). Removed from the page when CFG.testMode = false.
 // =====================================================================
 // V_15: new key, so everyone's saved panel values reset to the new defaults (new fines).
-const SETTINGS_KEY = 'copycat_experiment_dev_settings_v15';
+const SETTINGS_KEY = 'copycat_experiment_dev_settings_v16';
 const CFG_DEFAULTS = JSON.parse(JSON.stringify(CFG));
 const PARAM_KEYS = ['starting', 'jamStartTrial', 'openRoadReward', 'jamNormativeReward', 'shoulderReward',
                     'brakeCost', 'edgeBumpCost', 'high.p', 'high.fine', 'low.p', 'low.fine', 'crawl.durationScale'];
@@ -3661,19 +3619,12 @@ function setParam(path, v) {
   o[ks[ks.length - 1]] = v;
 }
 function defaultSettings() {
-  const params = {};
-  PARAM_KEYS.forEach(k => { params[k] = k.split('.').reduce((o, p) => o[p], CFG_DEFAULTS); });
   return {
     runMode: 'scripted', manualPhase: 'baseline',
     counts: { ...CFG_DEFAULTS.countsTest },
     social: 'experimental', det: 'high', shoulder: 'stay',
-    fineOverride: 'random', theme: CFG_DEFAULTS.theme, lang: null, panelOpen: false, screens: 'full',
-    language: CFG_DEFAULTS.languageMode,
-    feedbackStyle: CFG_DEFAULTS.feedbackStyle,
-    motion: CFG_DEFAULTS.motion,
-    lighting: CFG_DEFAULTS.lighting,
-    ambient: CFG_DEFAULTS.ambientTraffic ? 'on' : 'off',
-    params
+    lang: null, panelOpen: false, screens: 'full',
+    langChoice: false            // V_16: add the language choice screen (English / Hebrew) at the start
   };
 }
 let SETTINGS = defaultSettings();
@@ -3684,7 +3635,7 @@ function loadSettings() {
     if (!raw) return;
     const s = JSON.parse(raw);
     const d = defaultSettings();
-    SETTINGS = { ...d, ...s, counts: { ...d.counts, ...(s.counts || {}) }, params: { ...d.params, ...(s.params || {}) } };
+    SETTINGS = { ...d, ...s, counts: { ...d.counts, ...(s.counts || {}) } };
   } catch (e) { /* storage unavailable: keep defaults */ }
 }
 function saveSettings() {
@@ -3713,10 +3664,6 @@ function toggleTheme() {
   try { localStorage.setItem('driving_display', to); } catch (e) { /* not available */ }
 }
 function applySettingsToExperiment() {
-  PARAM_KEYS.forEach(k => {
-    const v = Number(SETTINGS.params[k]);
-    if (Number.isFinite(v)) setParam(k, v);
-  });
   socialCondition = SETTINGS.social;
   deterrenceCondition = SETTINGS.det;
   shoulderMode = SETTINGS.shoulder;
@@ -3743,14 +3690,7 @@ function setSetting(name, v) {
   else if (name === 'social') { SETTINGS.social = v; socialCondition = v; }
   else if (name === 'det') { SETTINGS.det = v; deterrenceCondition = v; }
   else if (name === 'shoulder') { SETTINGS.shoulder = v; shoulderMode = v; }
-  else if (name === 'fineOverride') SETTINGS.fineOverride = v;
-  else if (name === 'theme') { SETTINGS.theme = v; applyTheme(v); }
-  else if (name === 'feedbackStyle') SETTINGS.feedbackStyle = v;
   else if (name === 'screens') SETTINGS.screens = v;
-  else if (name === 'language') SETTINGS.language = v;
-  else if (name === 'motion') { SETTINGS.motion = v; applyMotion(); }
-  else if (name === 'lighting') { SETTINGS.lighting = v; updateLighting(); }
-  else if (name === 'ambient') SETTINGS.ambient = v;
   saveSettings();
   renderDev();
   updateHud();
@@ -3759,17 +3699,17 @@ function setSetting(name, v) {
 function fmt(n) { return (Math.round(n * 10) / 10).toString(); }
 function signed(n) { return (n > 0 ? '+' : n < 0 ? '−' : '') + fmt(Math.abs(n)); }
 
+// V_16: the payoffs are shown, not edited (the values agreed with Yefim on 3 Nov 2026).
 function renderEV() {
   const adv = CFG.shoulderReward - CFG.jamNormativeReward;
   const evH = CFG.high.p * CFG.high.fine, evL = CFG.low.p * CFG.low.fine;
-  const warn = Math.abs(evH - evL) > 1e-9
-    ? `<div class="warn">Expected fines differ (${fmt(evH)} vs ${fmt(evL)}) — conditions are not equated.</div>` : '';
+  const pct = p => Math.round(p * 100) + '%';
   $('evSummary').innerHTML = `
-    <div><span class="k">Shoulder advantage in jam:</span> <b>${signed(adv)}</b> / trial</div>
-    <div><span class="k">Expected fine:</span> High <b>${fmt(evH)}</b> · Low <b>${fmt(evL)}</b></div>
-    <div><span class="k">Shoulder vs road under deterrence:</span> High <b>${signed(adv - evH)}</b> · Low <b>${signed(adv - evL)}</b></div>
-    <div><span class="k">Fined shoulder trial nets:</span> High <b>${signed(CFG.shoulderReward - CFG.high.fine)}</b> · Low <b>${signed(CFG.shoulderReward - CFG.low.fine)}</b></div>
-    ${warn}`;
+    <div><span class="k">Start:</span> <b>${CFG.starting}</b> points · <span class="k">jam from trial</span> <b>${CFG.jamStartTrial}</b></div>
+    <div><span class="k">Per step:</span> open road <b>+${CFG.openRoadReward}</b> · jam road <b>+${CFG.jamNormativeReward}</b> · shoulder <b>+${CFG.shoulderReward}</b></div>
+    <div><span class="k">Brake</span> <b>−${CFG.brakeCost}</b> · <span class="k">guardrail bump</span> <b>−${CFG.edgeBumpCost}</b></div>
+    <div><span class="k">Fines (deterrence, on the shoulder):</span> High <b>${pct(CFG.high.p)} × ${CFG.high.fine}</b> · Low <b>${pct(CFG.low.p)} × ${CFG.low.fine}</b></div>
+    <div><span class="k">Expected fine:</span> High <b>${fmt(evH)}</b> · Low <b>${fmt(evL)}</b> · <span class="k">shoulder vs road:</span> <b>${signed(adv - evH)}</b> / <b>${signed(adv - evL)}</b></div>`;
 }
 
 function renderDevStatus() {
@@ -3795,9 +3735,7 @@ function renderDev() {
   if (!CFG.testMode || !$('devPanel')) return;
   document.querySelectorAll('#devPanel .seg').forEach(seg => {
     const map = { runMode: SETTINGS.runMode, manualPhase: SETTINGS.manualPhase, social: SETTINGS.social, det: SETTINGS.det,
-                  shoulder: SETTINGS.shoulder, fineOverride: SETTINGS.fineOverride, theme: SETTINGS.theme,
-                  feedbackStyle: SETTINGS.feedbackStyle, motion: SETTINGS.motion, screens: SETTINGS.screens,
-                  language: SETTINGS.language, lighting: SETTINGS.lighting, ambient: SETTINGS.ambient };
+                  shoulder: SETTINGS.shoulder, screens: SETTINGS.screens };
     seg.querySelectorAll('button[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === map[seg.dataset.setting])));
   });
   const manual = SETTINGS.runMode === 'manual';
@@ -3811,10 +3749,8 @@ function renderDev() {
   });
   const tot = Object.values(SETTINGS.counts).reduce((a, b) => a + b, 0);
   $('countTotal').textContent = `total ${tot}`;
-  document.querySelectorAll('#devPanel [data-param]').forEach(inp => {
-    if (document.activeElement !== inp) inp.value = SETTINGS.params[inp.dataset.param];
-    inp.disabled = running && PRE_RUN_ONLY.includes(inp.dataset.param);
-  });
+  const lc = $('devLangChoice');
+  if (lc) lc.checked = !!SETTINGS.langChoice;
   $('devEnd').disabled = !running;
   renderEV();
   renderDevStatus();
@@ -3850,29 +3786,8 @@ function initDevPanel() {
   document.querySelectorAll('#devPanel [data-countpreset]').forEach(b => {
     b.onclick = () => { SETTINGS.counts = { ...COUNT_PRESETS[b.dataset.countpreset] }; saveSettings(); renderDev(); updateHud(); };
   });
-  document.querySelectorAll('#devPanel [data-param]').forEach(inp => {
-    inp.addEventListener('input', () => {
-      const v = Number(inp.value);
-      if (inp.value === '' || !Number.isFinite(v)) return;
-      SETTINGS.params[inp.dataset.param] = v;
-      setParam(inp.dataset.param, v);
-      if (inp.dataset.param === 'starting' && !running) { score = v; $('score').textContent = v; }
-      saveSettings();
-      renderEV();
-    });
-  });
-  const presetRow = $('payoffPresets');
-  Object.entries(PAYOFF_PRESETS).forEach(([key, p]) => {
-    const b = document.createElement('button');
-    b.className = 'dev-btn';
-    b.textContent = p.label;
-    b.onclick = () => {
-      Object.entries(p).forEach(([k, v]) => { if (k !== 'label') { SETTINGS.params[k] = v; setParam(k, v); } });
-      saveSettings();
-      renderDev();
-    };
-    presetRow.appendChild(b);
-  });
+  const lc = $('devLangChoice');
+  if (lc) lc.onchange = () => { SETTINGS.langChoice = lc.checked; saveSettings(); };
 
   $('devToggle').onclick = () => setPanelOpen(true);
   $('devClose').onclick = () => setPanelOpen(false);
@@ -3889,13 +3804,9 @@ function initDevPanel() {
 
 initDevPanel();
 initNavMap();
-{
-  let startTheme = CFG.theme;
-  try { startTheme = localStorage.getItem('driving_display') || CFG.theme; } catch (e) { /* not available */ }
-  applyTheme(startTheme);
-  participant.initialTheme = startTheme;
-  $('themeToggle').onclick = () => { $('themeToggle').blur(); toggleTheme(); };
-}
+// V_16: the light display only (no dark display for participants: one look for everyone, no confound).
+applyTheme('day');
+participant.initialTheme = 'day';
 if (languageMode() === 'choice') {
   setLang('en');
   showScreen('lang');
