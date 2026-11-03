@@ -76,6 +76,17 @@
   --pop-brake: #c3cbd6;
   --progress-track: #1d2a40;
 }
+:root {
+  /* V_15 sun: written by updateLighting(). Midday = shadow straight under the car. */
+  --sh-x: 0px; --sh-y: 2px; --sh-blur: 8px; --sh-a: .58;
+  --post-x: 1px; --post-y: 2px; --tr-x: 0px; --tr-y: 1px;
+  --map-bg: #eceee8; --map-block: #dfe2da; --map-street: #ffffff; --map-park: #cde2bf; --map-water: #c4daee;
+  --map-route: #2f6fdb; --map-done: #a7b1bf; --map-casing: #ffffff;
+}
+:root[data-scene="night"] {
+  --map-bg: #1d2633; --map-block: #253041; --map-street: #33405a; --map-park: #20372a; --map-water: #1d3450;
+  --map-route: #3d8bfd; --map-done: #56657d; --map-casing: #0f1726;
+}
 * { box-sizing: border-box; }
 body {
   margin: 0;
@@ -311,6 +322,15 @@ body {
   z-index: 3;
   pointer-events: none;
 }
+/* V_15: scenery shadows follow the sun */
+.scenery svg { overflow: visible; }
+.scenery .shd { transform: translate(var(--tr-x), var(--tr-y)); }
+/* V_15: late-afternoon light over the whole road scene (multiply: white = no change). Points and fines stay above it. */
+.sunlight {
+  position: absolute; inset: 0; z-index: 20; pointer-events: none;
+  mix-blend-mode: multiply; background-color: rgb(255, 255, 255);
+  transition: background-color 1.4s linear;
+}
 .guard-postL, .guard-postR {
   position: absolute;
   width: 14px;
@@ -323,12 +343,12 @@ body {
 .guard-postL {
   left: calc(8.8% - 2px);
   border-right: 3.5px solid #ff4d4f;
-  box-shadow: 7px 3px 8px rgba(0, 0, 0, 0.75);
+  box-shadow: var(--post-x) var(--post-y) 7px rgba(0, 0, 0, 0.7);
 }
 .guard-postR {
   right: calc(8.8% - 2px);
   border-left: 3.5px solid #ff4d4f;
-  box-shadow: -7px 3px 8px rgba(0, 0, 0, 0.75);
+  box-shadow: var(--post-x) var(--post-y) 7px rgba(0, 0, 0, 0.7);
 }
 
 /* ==========================================
@@ -349,7 +369,7 @@ body {
   border: 2px solid #dfe9f5;
   border-radius: 14px 14px 10px 10px;
   background: var(--car-color, #2987e8);
-  box-shadow: 0 10px 18px #000a, inset 0 0 8px #ffffff26;
+  box-shadow: var(--sh-x) var(--sh-y) var(--sh-blur) rgba(0, 0, 0, var(--sh-a)), inset 0 0 8px #ffffff26;
   transition: transform 0.34s cubic-bezier(.22,.8,.25,1);
 }
 .car.steer-right .car-chassis {
@@ -792,7 +812,7 @@ body.layout-side .hint { max-width: 180px; text-align: center; }
   100% { opacity: 0; translate: 0 -30px; }
 }
 
-/* Neutral "you hit the edge" bump: no colour, no text, no lost turn. */
+/* "You hit the edge" bump: no red and no lost turn. V_15: costs CFG.edgeBumpCost points, shown like the brake cost. */
 @keyframes bumpRight { 0% { translate: 0 0; } 35% { translate: 9px 0; } 70% { translate: -2px 0; } 100% { translate: 0 0; } }
 @keyframes bumpLeft  { 0% { translate: 0 0; } 35% { translate: -9px 0; } 70% { translate: 2px 0; } 100% { translate: 0 0; } }
 @keyframes stageRumble { 0%, 100% { translate: 0 0; } 25% { translate: 2px 0; } 50% { translate: -2px 0; } 75% { translate: 1px 0; } }
@@ -816,8 +836,28 @@ html.motion-smooth .npc .car-chassis {
 
 @media(max-width: 600px) {
   .stage { height: 470px; }
-  .controls { flex-direction: column; gap: 12px; }
+  .controls { flex-wrap: wrap; gap: 12px 16px; }
+  .controls .hint { flex-basis: 100%; max-width: none; text-align: center; }
 }
+/* V_15: navigation-style mini-map beside the arrow keys. Progress is by trials (like the bar), never by distance. */
+.navmap {
+  flex: none; line-height: 0; border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--surface-border); box-shadow: 0 2px 8px rgba(20, 30, 50, .12);
+}
+.navsvg { display: block; width: 86px; height: 122px; }
+body.layout-side .navsvg { width: 168px; height: 238px; }
+.nm-bg { fill: var(--map-bg); }
+.nm-block { fill: var(--map-block); }
+.nm-street { fill: none; stroke: var(--map-street); stroke-width: 3.2; stroke-linecap: round; }
+.nm-park { fill: var(--map-park); }
+.nm-water { fill: var(--map-water); }
+.nm-casing { fill: none; stroke: var(--map-casing); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
+.nm-route { fill: none; stroke: var(--map-route); stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; }
+.nm-done { fill: none; stroke: var(--map-done); stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; }
+.nm-start { fill: var(--map-done); stroke: var(--map-casing); stroke-width: 2; }
+.nm-pole { stroke: #3b4350; stroke-width: 1.6; stroke-linecap: round; }
+.nm-car-ring { fill: #ffffff; }
+.nm-car-dot { fill: var(--map-route); }
 </style>
 </head>
 <body>
@@ -861,6 +901,8 @@ html.motion-smooth .npc .car-chassis {
 
       <div class="car player braking" id="player"></div>
 
+      <div class="sunlight" id="sunlight" aria-hidden="true"></div>
+
       <div class="feedback gain" id="gain"></div>
       <div class="feedback loss" id="loss"></div>
 
@@ -868,6 +910,38 @@ html.motion-smooth .npc .car-chassis {
     </div>
 
     <footer class="controls">
+      <div class="navmap" aria-hidden="true">
+        <svg class="navsvg" viewBox="0 0 120 170">
+          <defs>
+            <pattern id="nmCheck" width="4" height="4" patternUnits="userSpaceOnUse">
+              <rect width="4" height="4" fill="#ffffff"/><rect width="2" height="2" fill="#1f2630"/><rect x="2" y="2" width="2" height="2" fill="#1f2630"/>
+            </pattern>
+          </defs>
+          <rect class="nm-bg" width="120" height="170"/>
+          <rect class="nm-block" x="6" y="8" width="30" height="22" rx="3"/>
+          <rect class="nm-block" x="86" y="34" width="28" height="24" rx="3"/>
+          <rect class="nm-block" x="6" y="58" width="24" height="30" rx="3"/>
+          <rect class="nm-block" x="92" y="96" width="22" height="26" rx="3"/>
+          <rect class="nm-block" x="8" y="136" width="30" height="26" rx="3"/>
+          <path class="nm-park" d="M88 128 q16 -6 24 6 q4 14 -10 20 q-16 4 -20 -8 q-3 -12 6 -18z"/>
+          <path class="nm-water" d="M0 96 C 12 92, 18 104, 26 108 S 30 126, 0 130 Z"/>
+          <path class="nm-street" d="M0 46 L 120 40"/>
+          <path class="nm-street" d="M0 122 L 120 116"/>
+          <path class="nm-street" d="M98 0 L 104 170"/>
+          <path class="nm-street" d="M18 0 L 22 170"/>
+          <path id="navRoute" class="nm-casing" d="M60 160 C 60 140, 38 134, 39 112 S 82 90, 81 68 S 57 44, 60 22"/>
+          <path class="nm-route" d="M60 160 C 60 140, 38 134, 39 112 S 82 90, 81 68 S 57 44, 60 22"/>
+          <path id="navDone" class="nm-done" d="M60 160 C 60 140, 38 134, 39 112 S 82 90, 81 68 S 57 44, 60 22"/>
+          <circle class="nm-start" cx="60" cy="160" r="3.6"/>
+          <line class="nm-pole" x1="60" y1="22" x2="60" y2="5"/>
+          <rect x="60.6" y="5" width="12" height="8" fill="url(#nmCheck)" stroke="#1f2630" stroke-width=".6"/>
+          <g id="navCar" transform="translate(60 160)">
+            <circle class="nm-car-ring" r="7.2"/>
+            <circle class="nm-car-dot" r="5.6"/>
+            <path d="M0 -3.6 L 2.9 2.7 L 0 1.3 L -2.9 2.7 Z" fill="#ffffff"/>
+          </g>
+        </svg>
+      </div>
       <div class="pad" dir="ltr">
         <button class="key up" data-key="ArrowUp">↑</button>
         <button class="key left" data-key="ArrowLeft">←</button>
@@ -952,6 +1026,7 @@ html.motion-smooth .npc .car-chassis {
       <label>Jam: road <input type="number" step="1" data-param="jamNormativeReward"></label>
       <label>Jam: shoulder <input type="number" step="1" data-param="shoulderReward"></label>
       <label>Brake cost <input type="number" step="1" data-param="brakeCost"></label>
+      <label>Edge bump cost <input type="number" step="1" data-param="edgeBumpCost"></label>
       <label>High: probability <input type="number" min="0" max="1" step="0.01" data-param="high.p"></label>
       <label>High: fine <input type="number" min="0" step="1" data-param="high.fine"></label>
       <label>Low: probability <input type="number" min="0" max="1" step="0.01" data-param="low.p"></label>
@@ -998,6 +1073,21 @@ html.motion-smooth .npc .car-chassis {
   </section>
 
   <section class="dev-sec">
+    <h3>Scene</h3>
+    <span class="dev-label">Light along the route</span>
+    <div class="seg" data-setting="lighting">
+      <button data-v="dusk">Midday → late afternoon</button>
+      <button data-v="off">Always midday</button>
+    </div>
+    <span class="dev-label">Traffic on the open road</span>
+    <div class="seg" data-setting="ambient">
+      <button data-v="on">Light traffic</button>
+      <button data-v="off">Empty road</button>
+    </div>
+    <p class="dev-note">Light follows the trial count (the same for every participant at the same trial) and is logged as light_level. Open-road traffic never uses the shoulder and never blocks forward or a lane change.</p>
+  </section>
+
+  <section class="dev-sec">
     <h3>Fine outcome <span class="dev-sub">for testing the display</span></h3>
     <div class="seg" data-setting="fineOverride">
       <button data-v="random">Random (real)</button>
@@ -1033,8 +1123,22 @@ const CFG = {
   jamNormativeReward: 5,
   shoulderReward: 10,
   brakeCost: 5,
-  high: { p: 0.9, fine: 50 },
-  low: { p: 0.1, fine: 450 },
+  // V_15: agreed with Yefim on 3 Nov 2026. Expected fine 11 in both regimes, so under deterrence the
+  // shoulder (10) is worse than the road in the jam (5) by 6 points per trial.
+  high: { p: 1, fine: 11 },
+  low: { p: 0.1, fine: 110 },
+  // V_15: pressing toward the guardrail while already at the road edge costs the same as braking.
+  edgeBumpCost: 5,
+  // V_15: the light changes from midday to late afternoon along the route ('dusk'), or stays at midday ('off').
+  lighting: 'dusk',
+  sun: {
+    endTint: [226, 207, 186],   // multiply colour at the end of the route (about 18% darker, slightly warm): never night
+    nightStrength: 0.55,        // the dark display is already darker, so it gets only part of the change
+    maxShadowPx: 16             // shadow length at the end of the route (midday: straight under the car)
+  },
+  // V_15: light, irregular traffic on the open road (normative lanes only, never on the shoulder).
+  ambientTraffic: true,
+  ambient: { maxCars: 4, maxPerLane: 2 },
   freeDriveMs: 1050,
   jamDriveMs: 1650,
   shoulderDriveMs: 1180,
@@ -1073,7 +1177,11 @@ const CFG = {
   // (the copycat is still visibly accelerating away while the participant drives on).
   // Copycat demonstration timing (ms). V_9: the demo starts while the previous move is still rolling, and
   // control returns 0.7 s after the copycat starts pulling onto the shoulder (it stays visible as it moves away).
-  copycat: { startDelayMs: 0, blinkMs: 300, cutMs: 900, fillStartMs: 450, fillMs: 700, unlockAfterCutMs: 800 },
+  // V_15: the participant can drive during the demo. Only a lane change INTO the copycat's lane waits
+  // (with the indicator on) until mergeLaneAfterMs, because a car sits beside the player there until the queue moves up.
+  // minGapMs: the next demo never starts sooner than this after the previous one (both use the same shoulder).
+  copycat: { startDelayMs: 0, blinkMs: 300, cutMs: 900, fillStartMs: 450, fillMs: 700, unlockAfterCutMs: 800,
+             mergeLaneAfterMs: 1300, minGapMs: 1500 },   // 1300 = until the car beside the player has moved up (fill ends)
   // World-scroll distance per step (px). These were missing in V_3 (-> NaN, scenery froze). Values restored from V_2.
   stepDist: 330,
   shoulderStepDist: 460,
@@ -1142,11 +1250,11 @@ const TXT = {
     ineligibleTitle: 'Thank you for your interest',
     ineligibleBody: 'This study is open only to people who hold a valid driver’s license, so you cannot take part this time.',
     introBody: [
-      'You are about to drive along a busy road. At each step you choose how to move on, and your car carries out your choice.',
+      'You are about to drive along a busy road. Your task is to complete the route ahead of you. At each step you choose how to move on, and your car carries out your choice.',
       'Every step forward earns points. You start with {start} points, and at the end of the drive your points are converted into a bonus: the more points you finish with, the larger your bonus.'
     ],
     keyUp: 'Drive forward', keySide: 'Change lane', keyDown: 'Brake',
-    keysNote: 'Use the arrow keys on your keyboard or the arrow buttons next to the road.',
+    keysNote: 'Use the arrow keys on your keyboard or the arrow buttons next to the road. The map next to the road shows where you are on the route.',
     go: 'Start driving',
     arrivedTitle: 'You have reached your destination',
     arrivedBody: 'You finished the drive with <b>{score}</b> points. A few short questions follow.',
@@ -1244,11 +1352,11 @@ const TXT = {
     ineligibleTitle: 'תודה על ההתעניינות',
     ineligibleBody: 'המחקר מיועד לבעלי רישיון נהיגה בתוקף בלבד, ולכן לא ניתן להשתתף בו הפעם.',
     introBody: [
-      'עוד רגע תנהגו בכביש עמוס. בכל שלב תבחרו איך להמשיך, והרכב שלכם יבצע את הבחירה.',
+      'עוד רגע תנהגו בכביש עמוס. המשימה שלכם היא להשלים את המסלול שלפניכם. בכל שלב תבחרו איך להמשיך, והרכב שלכם יבצע את הבחירה.',
       'כל התקדמות מזכה בנקודות. אתם מתחילים עם {start} נקודות, ובסוף הנסיעה הנקודות יומרו לבונוס: ככל שתסיימו עם יותר נקודות, הבונוס יהיה גבוה יותר.'
     ],
     keyUp: 'נסיעה קדימה', keySide: 'מעבר נתיב', keyDown: 'בלימה',
-    keysNote: 'אפשר להשתמש בחיצי המקלדת או בכפתורי החצים שליד הכביש.',
+    keysNote: 'אפשר להשתמש בחיצי המקלדת או בכפתורי החצים שליד הכביש. המפה שליד הכביש מראה איפה אתם נמצאים במסלול.',
     go: 'יוצאים לדרך',
     arrivedTitle: 'הגעתם ליעד',
     arrivedBody: 'סיימתם את הנסיעה עם <b>{score}</b> נקודות. לפניכם מספר שאלות קצרות.',
@@ -1318,7 +1426,7 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_14';
+const VERSION = 'V_15';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
 const isJamTrial = t => t >= CFG.jamStartTrial;
@@ -1346,6 +1454,14 @@ let bufferedKey = null;
 let bufferedAt = 0;
 let pendingBufferedRt = null;
 let invalidSidePresses = 0;      // presses toward the guardrail while already at the road edge (this trial)
+let edgeBumpCostTrial = 0;       // V_15: points lost to edge bumps on this trial
+let currentLight = 0;            // V_15: 0 = midday, 1 = end of the route (late afternoon)
+let ambientCars = [];            // V_15: free-flowing cars on the open road (not part of the jam engine)
+let copycatDemo = null;          // V_15: timing of the running / last demo { t, lane, t0, fillAt, mergeOkAt, seq }
+let lastDemoStartAt = 0;
+let queuedMerge = null;          // V_15: a lane change into the copycat's lane that waited for room
+let ambLaneBefore = null;        // V_15: the player's lane before the current move (for open-road traffic)
+let jamAbsorb = null;            // V_15: open-road cars that join the queue when the jam begins
 const feedbackStyle = () => (CFG.testMode ? SETTINGS.feedbackStyle : CFG.feedbackStyle);
 const motionMode = () => (CFG.testMode ? SETTINGS.motion : CFG.motion);
 const crawlActive = () => motionMode() === 'crawl';
@@ -1389,6 +1505,8 @@ function crawlFrame(ts) {
       paintCrawl();
     }
   }
+  renderAmbient();   // V_15
+  navFrame(ts);      // V_15
   requestAnimationFrame(crawlFrame);
 }
 function endTime(moveMs) {
@@ -1435,7 +1553,7 @@ function outcomeTime(moveMs) {
 }
 function openBufferAfterOutcome() {
   if (feedbackStyle() !== 'continuous') return;
-  if (isCopycatTrial(trial + 1)) return; // never carry a press into a copycat trial
+  // V_15: a press may now be carried into a copycat trial too (the participant can drive during the demo).
   if (locked && running) bufferOpen = true;
 }
 let activeCopycatTrial = null;
@@ -1505,6 +1623,8 @@ function baseRecord() {
     input_during_copycat: copycatPresses[trial] || 0,
     motion: motionMode(),
     invalid_side_presses: invalidSidePresses,
+    edge_bump_cost: edgeBumpCostTrial,
+    light_level: +currentLight.toFixed(3),
     feedback_style: feedbackStyle(),
     theme: document.documentElement.dataset.scene,
     tab_hidden_count: trialHiddenCount,
@@ -1617,7 +1737,7 @@ function animateCarTo(car, targetY, durationMs, easing = 'cubic-bezier(.24,.72,.
 function getScenerySVG(type) {
   if (type === 'tree') {
     return `<svg width="38" height="38" viewBox="0 0 46 46">
-      <circle cx="24" cy="25" r="18" fill="#0d170c" opacity="0.45"/>
+      <circle class="shd" cx="22" cy="23" r="17.5" fill="#0d170c" opacity="0.45"/>
       <circle cx="22" cy="22" r="16" fill="#2d4c28" stroke="#1e351a" stroke-width="1.5"/>
       <circle cx="17" cy="18" r="10" fill="#3b6234"/>
       <circle cx="27" cy="25" r="9" fill="#34572e"/>
@@ -1626,14 +1746,14 @@ function getScenerySVG(type) {
   }
   if (type === 'bush') {
     return `<svg width="26" height="26" viewBox="0 0 32 32">
-      <circle cx="17" cy="18" r="11" fill="#0d170c" opacity="0.35"/>
+      <circle class="shd" cx="15.5" cy="16.5" r="11" fill="#0d170c" opacity="0.35"/>
       <circle cx="15" cy="16" r="10" fill="#355830"/>
       <circle cx="20" cy="14" r="7" fill="#446e3d"/>
     </svg>`;
   }
   if (type === 'benchL' || type === 'benchR') {
     return `<svg width="20" height="38" viewBox="0 0 24 44">
-      <rect x="4" y="4" width="16" height="36" rx="3" fill="#00000055"/>
+      <rect class="shd" x="3.5" y="3.5" width="16" height="36" rx="3" fill="#00000055"/>
       <rect x="4" y="3" width="15" height="4" rx="1.5" fill="#4a525a"/>
       <rect x="4" y="35" width="15" height="4" rx="1.5" fill="#4a525a"/>
       <rect x="5" y="5" width="4" height="32" rx="1" fill="#9c622d" stroke="#5e3a19" stroke-width="0.8"/>
@@ -1650,7 +1770,7 @@ function getScenerySVG(type) {
   }
   if (type === 'trash') {
     return `<svg width="20" height="20" viewBox="0 0 22 22">
-      <circle cx="12" cy="13" r="8" fill="#00000060"/>
+      <circle class="shd" cx="11.3" cy="11.8" r="8" fill="#00000060"/>
       <rect x="2" y="9" width="18" height="4" rx="1.5" fill="#394149"/>
       <circle cx="11" cy="11" r="7.5" fill="#525c66" stroke="#2b3137" stroke-width="1.5"/>
       <circle cx="11" cy="11" r="5" fill="#67737f" stroke="#3d454d" stroke-width="1"/>
@@ -1736,6 +1856,312 @@ function seedSceneryUpTo(minWorldY) {
   }
 }
 
+// =====================================================================
+// V_15: LIGHT ALONG THE ROUTE (midday -> late afternoon)
+// The sun starts straight overhead (each car's shadow lies right under it) and moves behind the car
+// and to its left, so shadows grow forward and to the right. The sun itself is never drawn and never
+// lies ahead of the driver, so nothing on screen suggests glare. The scene is warmed and dimmed by at
+// most about 20% (late afternoon, never dark). The light depends only on the trial number, so every
+// participant sees the same light on the same trial; it is logged per trial as light_level.
+// =====================================================================
+const lightingMode = () => (CFG.testMode ? (SETTINGS.lighting || CFG.lighting) : CFG.lighting);
+function plannedTotal() { return Object.values(activeCounts()).reduce((a, b) => a + b, 0); }
+function routeFrac(doneTrials) {
+  const total = plannedTotal();
+  return total > 0 ? Math.max(0, Math.min(1, doneTrials / total)) : 0;
+}
+function lightFrac() {
+  if (!running && !finished) return 0;
+  const total = plannedTotal();
+  const done = finished ? total - 1 : Math.max(0, trial - 1);
+  return total > 1 ? Math.max(0, Math.min(1, done / (total - 1))) : 0;
+}
+function updateLighting() {
+  const f = lightingMode() !== 'off' ? lightFrac() : 0;
+  currentLight = f;
+  const s = Math.pow(f, 1.15);
+  const len = CFG.sun.maxShadowPx * s;
+  const st = document.documentElement.style;
+  st.setProperty('--sh-x', (0.6 * len).toFixed(1) + 'px');
+  st.setProperty('--sh-y', (2 - 0.8 * len).toFixed(1) + 'px');
+  st.setProperty('--sh-blur', (8 - 2 * s).toFixed(1) + 'px');
+  st.setProperty('--sh-a', (0.58 - 0.06 * s).toFixed(2));
+  st.setProperty('--post-x', (1 + 0.45 * len).toFixed(1) + 'px');
+  st.setProperty('--post-y', (2 - 0.55 * len).toFixed(1) + 'px');
+  st.setProperty('--tr-x', (0.5 * len).toFixed(1) + 'px');
+  st.setProperty('--tr-y', (1 - 0.6 * len).toFixed(1) + 'px');
+  const el = $('sunlight');
+  if (!el) return;
+  // Midday light holds for the first part of the route, then changes slowly.
+  const u = Math.max(0, Math.min(1, (f - 0.12) / 0.88));
+  const k = u * u * (3 - 2 * u) * (document.documentElement.dataset.scene === 'night' ? CFG.sun.nightStrength : 1);
+  const c = CFG.sun.endTint.map(v => Math.round(255 + (v - 255) * k));
+  el.style.backgroundColor = `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
+
+// =====================================================================
+// V_15: NAVIGATION MINI-MAP beside the arrow keys. The marker moves by trials (like the progress bar),
+// never by distance, so no choice (shoulder, brake) brings the finish closer.
+// =====================================================================
+const navmap = { shown: 0, from: 0, to: 0, t0: 0, dur: 1, len: 0 };
+function initNavMap() {
+  const p = $('navRoute');
+  if (!p || !p.getTotalLength) return;
+  navmap.len = p.getTotalLength();
+  placeNavMarker(0);
+}
+function placeNavMarker(f) {
+  const p = $('navRoute');
+  if (!p || !navmap.len) return;
+  const L = navmap.len, s = f * L;
+  const a = p.getPointAtLength(Math.max(0, s - 1.5)), b = p.getPointAtLength(Math.min(L, s + 1.5)), pt = p.getPointAtLength(s);
+  const ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI + 90;
+  $('navCar').setAttribute('transform', `translate(${pt.x.toFixed(2)} ${pt.y.toFixed(2)}) rotate(${ang.toFixed(1)})`);
+  $('navDone').style.strokeDasharray = `${s.toFixed(2)} ${(L + 10).toFixed(2)}`;
+}
+function setNavTarget(f, durMs) {
+  f = Math.max(0, Math.min(1, f));
+  if (Math.abs(f - navmap.to) < 1e-6) return;
+  navmap.from = navmap.shown;
+  navmap.to = f;
+  navmap.t0 = performance.now();
+  navmap.dur = Math.max(1, durMs);
+}
+function navFrame(now) {
+  if (navmap.shown === navmap.to) return;
+  const u = Math.max(0, Math.min(1, (now - navmap.t0) / navmap.dur));
+  const e = u * u * (3 - 2 * u);
+  navmap.shown = u >= 1 ? navmap.to : navmap.from + (navmap.to - navmap.from) * e;
+  placeNavMarker(navmap.shown);
+}
+
+// =====================================================================
+// V_15: LIGHT TRAFFIC ON THE OPEN ROAD
+// A few cars in the two normal lanes, appearing at random moments and places: cars ahead that the
+// player slowly catches up with and that then pull away, and cars that come up from behind in the
+// other lane and pass. Rules that keep every option open at every decision:
+//  * never on a shoulder and never changing lanes;
+//  * a car ahead in the player's lane keeps a gap of at least 64px; a car behind in it drops back;
+//  * when a decision opens, no car is beside the player in a lane the player can move into;
+//  * cars in the same lane keep at least 24px apart.
+// A car's screen position is tied to the drawn road position, so it moves only while the road moves.
+// When the jam begins, the cars ahead join the queue and one car behind becomes the lane's rear car.
+// =====================================================================
+const amb = { pStart: 0, pEnd: 0, tStart: 0, dur: 1 };
+const ambientOn = () => (CFG.testMode ? SETTINGS.ambient !== 'off' : CFG.ambientTraffic);
+const NORM_LANES = ['left', 'right'];
+function reachableLanesFrom(lane) {
+  if (lane === 'shoulder') return ['right'];
+  if (lane === 'leftShoulder') return ['left'];
+  return ['left', 'right'];
+}
+function ambGeom() {
+  const PY = CFG.playerNormY, CH = 82;
+  return { PY, CH, aheadMax: PY - CH - 64, behindMin: PY + CH + 34, bandTop: PY - CH - 16, bandBot: PY + CH + 16, gap: CH + 24 };
+}
+function ambProgress() {
+  let p;
+  if (crawlActive()) {
+    const span = amb.pEnd - amb.pStart;
+    p = span > 0.5 ? (crawl.shown - amb.pStart) / span : 1;
+  } else {
+    p = Math.max(0, Math.min(1, (performance.now() - amb.tStart) / amb.dur));
+    p = p * p * (3 - 2 * p);
+  }
+  return Math.max(0, Math.min(1, p));
+}
+function renderAmbient() {
+  if (!ambientCars.length) return;
+  const p = ambProgress();
+  ambientCars.forEach(c => {
+    c.y = c.y0 + (c.y1 - c.y0) * p;
+    c.el.style.top = c.y.toFixed(1) + 'px';
+  });
+}
+function spawnAmbientCar(lane, y, ratio, kind) {
+  const roofId = generateUniqueRoofId();
+  const d = document.createElement('div');
+  d.className = 'car npc ambient';
+  d.dataset.origin = 'open-road';
+  d.style.transition = 'none';
+  d.style.left = laneX(lane) + '%';
+  d.style.top = y + 'px';
+  d.style.setProperty('--car-color', rand(CAR_COLORS));
+  d.style.setProperty('--idle-amp', (1 + Math.random() * 1.5).toFixed(1) + 'px');
+  d.style.setProperty('--idle-dur', (1.6 + Math.random() * 1.6).toFixed(2) + 's');
+  d.style.setProperty('--idle-delay', (-Math.random() * 3).toFixed(2) + 's');
+  d.innerHTML = buildCarAnatomy(roofId);
+  $('trafficLayer').appendChild(d);
+  const c = { el: d, lane, y, y0: y, y1: y, ratio, kind, stage: 0, turnAt: null, ratioAfter: ratio, roofId,
+              jitterY: motionSmooth() ? randInt(-CFG.smooth.jitterPx, CFG.smooth.jitterPx) : randInt(-2, 2),
+              tempo: 1, isCopycat: false, removed: false };
+  ambientCars.push(c);
+  return c;
+}
+function removeAmbient(c) {
+  c.removed = true;
+  if (c.el) c.el.remove();
+}
+// A few cars already ahead on the first trial, so the road is never empty.
+function seedAmbient() {
+  if (!ambientOn()) return;
+  const g = ambGeom();
+  const own = LANES[playerLaneIdx];
+  const other = own === 'left' ? 'right' : 'left';
+  spawnAmbientCar(other, randInt(20, g.bandTop - 40), 1.06 + Math.random() * 0.1, 'cruise');
+  if (Math.random() < 0.6) spawnAmbientCar(own, randInt(-50, 60), 1.06 + Math.random() * 0.1, 'cruise');
+  if (isJamTrial(2)) ambientCars.forEach(c => { c.ratio = 0.74; c.el.classList.add('braking'); });
+}
+// Plans every open-road car's position for the move that is starting now.
+function planAmbientStep(durationMs, d, maneuverType, laneBefore, laneAfter, upcomingTrial) {
+  const g = ambGeom();
+  const stageH = $('stage').clientHeight || 540;
+  ambientCars.forEach(c => { if (c.y < -g.CH - 6 || c.y > stageH + 4) removeAmbient(c); });
+  ambientCars = ambientCars.filter(c => !c.removed);
+  ambientCars.forEach(c => { c.y0 = c.y; });
+  amb.pStart = crawl.shown;
+  amb.pEnd = worldOffset + d;          // called before worldOffset moves on
+  amb.tStart = performance.now();
+  amb.dur = Math.max(200, durationMs);
+  if (!ambientOn()) { ambientCars.forEach(c => { c.y1 = c.y0 + d; }); return; }
+
+  const vRef = CFG.stepDist / (CFG.freeDriveMs * motionScale());   // px/ms of a car at the player's usual open-road speed
+  const occupied = [laneBefore, laneAfter].filter(l => NORM_LANES.includes(l));
+  const reachable = reachableLanesFrom(laneAfter);
+  const preJam = isJamTrial(upcomingTrial + 1);   // the next move reaches the jam: traffic ahead slows down
+  const natural = (c, ratio) => c.y0 + d - ratio * vRef * durationMs;
+  const laneCount = l => ambientCars.filter(c => c.lane === l).length;
+
+  // 1) New cars, at random moments and positions (forward moves only).
+  if (maneuverType !== 'brake' && ambientCars.length < CFG.ambient.maxCars) {
+    const n = ambientCars.length;
+    const pTop = preJam ? 0.9 : [0.85, 0.55, 0.32, 0.15][Math.min(3, n)];
+    if (Math.random() < pTop) {
+      const cand = NORM_LANES.filter(l => laneCount(l) < CFG.ambient.maxPerLane &&
+        !ambientCars.some(c => c.lane === l && (c.y < 15 || c.kind === 'overtake')));
+      if (cand.length) {
+        const lane = rand(cand);
+        const c = spawnAmbientCar(lane, -96 - randInt(0, 30), preJam ? 0.72 : 0.78 + Math.random() * 0.14, 'cruise');
+        c.turnAt = preJam ? null : randInt(10, occupied.includes(lane) ? g.aheadMax - 30 : g.bandTop - 20);
+        c.ratioAfter = 1.06 + Math.random() * 0.14;
+        if (preJam) c.el.classList.add('braking');
+      }
+    }
+    const overtakerActive = ambientCars.some(c => c.kind === 'overtake');
+    if (!preJam && !overtakerActive && ambientCars.length < CFG.ambient.maxCars && Math.random() < 0.4) {
+      const cand = NORM_LANES.filter(l => !occupied.includes(l) && laneCount(l) < CFG.ambient.maxPerLane &&
+        !ambientCars.some(c => c.lane === l && ((c.y > 40 && c.y < 330) || c.y > g.PY)));
+      if (cand.length) {
+        const c = spawnAmbientCar(rand(cand), stageH + 50, 1.15, 'overtake');
+        c.approachY = randInt(g.behindMin + 2, g.behindMin + 22);
+      }
+    }
+  }
+
+  // 2) Where each car would be at the end of this move.
+  ambientCars.forEach(c => {
+    let y1;
+    if (c.kind === 'overtake') {
+      if (c.stage === 0) { y1 = c.approachY; c.stage = 1; }                    // comes up behind, in the other lane
+      else if (occupied.includes(c.lane)) { c.kind = 'drop'; c.ratio = 0.86; y1 = natural(c, c.ratio); }  // player cut in: drops back
+      else {
+        const ahead = ambientCars.filter(o => o !== c && o.lane === c.lane && o.y0 < g.PY).map(o => o.y0);
+        const target = Math.max(randInt(120, 180), ahead.length ? Math.max(...ahead) + g.gap + 4 : -1e9);
+        if (target <= g.bandTop - 10) { y1 = target; c.kind = 'cruise'; c.ratio = 1.1 + Math.random() * 0.05; c.turnAt = null; }
+        else if ((c.holds = (c.holds || 0) + 1) < 2) y1 = c.y0;                 // no room yet: keeps pace behind
+        else { c.kind = 'drop'; c.ratio = 0.86; y1 = natural(c, c.ratio); }    // gives up and falls back
+      }
+    } else {
+      if (c.kind === 'cruise' && c.turnAt !== null && c.y0 >= c.turnAt) { c.ratio = c.ratioAfter; c.turnAt = null; }
+      if (preJam && c.kind === 'cruise' && c.y0 < g.PY) { c.ratio = Math.min(c.ratio, 0.74); c.turnAt = null; c.el.classList.add('braking'); }
+      y1 = natural(c, c.ratio);
+    }
+    // The lanes the player drives in during this move: a car ahead keeps its distance, a car behind drops back.
+    if (occupied.includes(c.lane)) {
+      if (c.y0 < g.PY) {
+        if (y1 > g.aheadMax) {
+          y1 = g.aheadMax - randInt(0, 6);
+          if (!preJam) { c.ratio = Math.max(c.ratio, 1 + Math.random() * 0.05); c.turnAt = null; }
+        }
+      } else if (y1 < g.behindMin) {
+        y1 = g.behindMin + randInt(0, 6);
+        c.kind = 'drop';
+        c.ratio = Math.min(c.ratio, 0.9);
+      }
+    }
+    c.y1 = y1;
+  });
+
+  // 3) Nothing beside the player, at the next decision, in a lane the player could move into.
+  const mid = (g.bandTop + g.bandBot) / 2;
+  ambientCars.forEach(c => {
+    if (occupied.includes(c.lane) || !reachable.includes(c.lane)) return;
+    if (c.y1 > g.bandTop && c.y1 < g.bandBot) {
+      if (c.y1 < mid) {
+        c.y1 = g.bandTop - randInt(0, 8);
+        if (!preJam) { c.ratio = Math.max(c.ratio, 1.03 + Math.random() * 0.08); c.turnAt = null; }
+      } else {
+        c.y1 = g.bandBot + randInt(0, 8);
+        if (c.kind !== 'overtake') { c.kind = 'drop'; c.ratio = Math.min(c.ratio, 0.9); }
+      }
+    }
+  });
+
+  // 4) Spacing in each lane: ahead of the player the car further ahead makes room; behind, the car further back drops back.
+  NORM_LANES.forEach(l => {
+    const cars = ambientCars.filter(c => c.lane === l).sort((a, b) => a.y0 - b.y0);
+    for (let i = cars.length - 2; i >= 0; i--) {
+      if (cars[i].y0 < g.PY && cars[i + 1].y1 - cars[i].y1 < g.gap) cars[i].y1 = cars[i + 1].y1 - g.gap;
+    }
+    for (let i = 1; i < cars.length; i++) {
+      if (cars[i].y1 - cars[i - 1].y1 < g.gap) cars[i].y1 = cars[i - 1].y1 + g.gap;
+    }
+  });
+}
+// The jam begins: cars ahead join the queue (CASE 0 uses them), one car behind becomes the rear car.
+function absorbAmbientIntoJam(newPlayerLaneIdx, durationMs) {
+  jamAbsorb = { left: [], right: [] };
+  if (!ambientCars.length) return;
+  const g = ambGeom();
+  const list = ambientCars;
+  ambientCars = [];                    // no more frame-by-frame drawing; from now on they are queue cars
+  NORM_LANES.forEach(lane => {
+    const cars = list.filter(c => c.lane === lane).sort((a, b) => a.y - b.y);
+    const ahead = cars.filter(c => c.y < g.PY);
+    const behind = cars.filter(c => c.y >= g.PY);
+    const slots = getLaneSlots(lane, newPlayerLaneIdx).length;
+    const extra = Math.max(0, ahead.length - slots);
+    ahead.slice(0, extra).forEach(c => {
+      animateCarTo(c, -220, durationMs, 'ease-in', 0);
+      setTimeout(() => removeAmbient(c), durationMs + 50);
+    });
+    jamAbsorb[lane] = ahead.slice(extra);
+    jamAbsorb[lane].forEach(c => { c.el.classList.remove('ambient'); c.isCopycat = false; });
+    behind.forEach((c, i) => {
+      c.el.classList.remove('ambient');
+      if (i === 0) rearCars.push(c);
+      else {
+        animateCarTo(c, 640, durationMs, 'ease-in', 0);
+        setTimeout(() => removeAmbient(c), durationMs + 50);
+      }
+    });
+  });
+}
+
+// V_15: if a copycat demo in this lane has just started, the cars there start closing up only once the
+// copycat has pulled out (at the moment the demo itself would start closing the gap).
+function demoHoldMs(lane) {
+  if (!copycatDemo || copycatDemo.lane !== lane) return 0;
+  return Math.max(0, Math.round(copycatDemo.fillAt - performance.now()));
+}
+// V_15: the next demo never starts sooner than minGapMs after the previous one (same shoulder).
+function copycatStartWait(t) {
+  if (!isManual() && t > totalTrials()) return 0;
+  planTrial(t);
+  if (!isCopycatTrial(t) || copycatGates[t] || !lastDemoStartAt) return 0;
+  return Math.max(0, Math.round(lastDemoStartAt + CFG.copycat.minGapMs - performance.now()));
+}
+
 function planTrial(t) {
   if (t in trialPhase) return;
   if (!isManual() && t > totalTrials()) return;
@@ -1787,6 +2213,9 @@ function startGame() {
   $('overlay').classList.add('hidden');
   lastSceneryWorldY = screenToWorldY(560);
   seedSceneryUpTo(screenToWorldY(-1400));
+  updateLighting();
+  setNavTarget(0, 1);
+  if (!isJamTrial(1)) seedAmbient();
   if (typeof renderDev === 'function') renderDev();
 
   // If the jam is already active on trial 1 (jam start set to 1), bring the traffic in before the first decision.
@@ -1931,6 +2360,14 @@ function updateRearTrafficForStep(durationMs, upcomingTrial, maneuverType, newPl
 }
 
 function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlayerLaneIdx) {
+  // V_15: open-road traffic moves with this step, or joins the queue when the jam begins.
+  if (isJamTrial(upcomingTrial)) {
+    if (ambientCars.length) absorbAmbientIntoJam(newPlayerLaneIdx, durationMs);
+  } else {
+    const d = maneuverType === 'brake' ? CFG.brakeStepDist
+      : (['enter_shoulder', 'stay_shoulder', 'overtake_and_merge'].includes(maneuverType) ? CFG.shoulderStepDist : CFG.stepDist);
+    planAmbientStep(durationMs, d, maneuverType, ambLaneBefore || LANES[newPlayerLaneIdx], LANES[newPlayerLaneIdx], upcomingTrial);
+  }
   const isUpcomingCopycatTrial = isCopycatTrial(upcomingTrial);
   const targetCopycatLane = isUpcomingCopycatTrial ? getCopycatLaneForPlayer(newPlayerLaneIdx) : null;
 
@@ -1953,11 +2390,18 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
     const desiredCount = laneSlots.length; // 3 (adjacent/player lane) or 4 (far lane when player is on shoulder)
 
     // CASE 0: Emerging into the staggered traffic jam on Trial 2 -> Trial 3
+    // V_15: cars that were already driving ahead on the open road become the last cars of the queue;
+    // only the missing ones come in from above the screen.
     if (laneCars.length === 0) {
-      for (let i = 0; i < desiredCount; i++) {
-        const startY = -153 - (desiredCount - 1 - i) * 106;
+      const absorbed = (jamAbsorb && jamAbsorb[lane]) || [];
+      if (jamAbsorb) jamAbsorb[lane] = [];
+      const need = Math.max(0, desiredCount - absorbed.length);
+      const topRef = absorbed.length ? Math.min(-153, absorbed[0].y - 110) : -153;
+      for (let i = 0; i < need; i++) {
+        const startY = topRef - (need - 1 - i) * 106;
         laneCars.push(spawnTrafficCar(startY, lane));
       }
+      absorbed.forEach(c => { trafficCars.push(c); laneCars.push(c); });
       laneCars.forEach((car, idx) => {
         const destY = laneSlots[idx] + car.jitterY;
         animateCarTo(car, destY, durationMs, 'cubic-bezier(.20,.76,.24,1)', 0.76);
@@ -1967,6 +2411,10 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
 
     // CASE 1: Entering a Social Exposure Trial in the Opposite Lane (targetCopycatLane)
     if (lane === targetCopycatLane) {
+      // V_15: if a demo in this lane has just started, the queue starts closing up only once the copycat has pulled out.
+      const hold1 = demoHoldMs(lane);
+      const seq1 = stepSeq;
+      const later1 = fn => (hold1 > 0 ? setTimeout(() => { if (stepSeq === seq1) fn(); }, hold1) : fn());
       while (laneCars.length < 3) {
         const topY = laneCars.length > 0 ? laneCars[0].y - 106 : -140;
         laneCars.unshift(spawnTrafficCar(topY, lane));
@@ -1980,7 +2428,7 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
         rearCars.push(tailCar);
         const baseRearY = getRearSlotForLane(lane, newPlayerLaneIdx);
         // Same timing as the platoon moving in behind it (crawl: 0.6 of the step), so they never close up.
-        animateCarTo(tailCar, baseRearY + tailCar.jitterY, Math.round(durationMs * (crawlActive() ? 0.6 : 1)), 'cubic-bezier(.24,.72,.24,1)', 0.78);
+        later1(() => animateCarTo(tailCar, baseRearY + tailCar.jitterY, Math.max(700, Math.round(durationMs * (crawlActive() ? 0.6 : 1)) - hold1), 'cubic-bezier(.24,.72,.24,1)', 0.78));
       }
 
       const newLead = spawnTrafficCar(-140, lane);
@@ -1991,7 +2439,7 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
 
       laneCars.forEach((car, idx) => {
         const destY = idx < 4 ? socialTargets[idx] : 600 + (idx - 4) * 106;
-        animateCarTo(car, destY, Math.round(durationMs * (crawlActive() ? 0.6 : 0.90)), 'cubic-bezier(.25,.72,.25,1)', destY < 400 ? 0.70 : 0);
+        later1(() => animateCarTo(car, destY, Math.max(700, Math.round(durationMs * (crawlActive() ? 0.6 : 0.90)) - hold1), 'cubic-bezier(.25,.72,.25,1)', destY < 400 ? 0.70 : 0));
       });
       return;
     }
@@ -2005,8 +2453,10 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
       const newHorizonCar = spawnTrafficCar(-140, lane);
       laneCars.unshift(newHorizonCar);
 
-      const delayMs = (maneuverType === 'enter_shoulder' || maneuverType === 'overtake_and_merge') ? 130 : 0;
-      const moveDur = durationMs - delayMs;
+      const hold2 = demoHoldMs(lane);   // V_15: see CASE 1
+      const seq2 = stepSeq;
+      const delayMs = ((maneuverType === 'enter_shoulder' || maneuverType === 'overtake_and_merge') ? 130 : 0) + hold2;
+      const moveDur = hold2 > 0 ? Math.max(700, durationMs - delayMs) : durationMs - delayMs;
       const baseRearY = getRearSlotForLane(lane, newPlayerLaneIdx);
 
       // Notice:
@@ -2020,6 +2470,7 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
         evictRearCarsInLane(lane, moveDur);
         rearCars.push(overtakenCar);
         setTimeout(() => {
+          if (hold2 > 0 && stepSeq !== seq2) return;
           animateCarTo(overtakenCar, baseRearY + overtakenCar.jitterY, moveDur, 'cubic-bezier(.24,.72,.24,1)', 0.78);
         }, delayMs);
       }
@@ -2029,6 +2480,7 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
         if (!car) continue;
         const destY = laneSlots[idx] + car.jitterY;
         setTimeout(() => {
+          if (hold2 > 0 && stepSeq !== seq2) return;
           animateCarTo(car, destY, moveDur, 'cubic-bezier(.24,.72,.24,1)', 0.74);
         }, delayMs);
       }
@@ -2046,6 +2498,8 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
     }
 
     // CASE 3: Normative Straight, Normative Lane Change, Merge Back from Shoulder, or Brake
+    const hold3 = demoHoldMs(lane);   // V_15: see CASE 1
+    const seq3 = stepSeq;
     while (laneCars.length < desiredCount) {
       const topY = laneCars.length > 0 ? laneCars[0].y - 106 : -140;
       laneCars.unshift(spawnTrafficCar(topY, lane));
@@ -2077,13 +2531,15 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
     laneCars.forEach((car, idx) => {
       const restY = laneSlots[idx] + car.jitterY;
       const surgeY = restY - pullForwardPx;
-      const stagger = idx * 45;
+      const stagger = idx * 45 + hold3;
 
       setTimeout(() => {
+        if (hold3 > 0 && stepSeq !== seq3) return;
         animateCarTo(car, surgeY, halfDur, 'cubic-bezier(.22,.75,.25,1)', 0);
       }, stagger);
 
       setTimeout(() => {
+        if (hold3 > 0 && stepSeq !== seq3) return;
         animateCarTo(car, restY, settleDur, 'cubic-bezier(.25,.72,.25,1)', 0.65);
       }, stagger + halfDur);
     });
@@ -2135,6 +2591,18 @@ function runCopycatDemonstration(t, onSafe) {
     .filter(c => c.lane === copycatLane && !c.removed && c !== copycat && c.y > copycat.y)
     .sort((a, b) => a.y - b.y);
 
+  // V_15: the participant may drive during the demo. The copycat leaves the lane's bookkeeping now; if the
+  // participant moves before the queue starts closing up, that move takes over the closing up (the demo's
+  // own fill below is then skipped) and starts it at the same moment (demoHoldMs).
+  const t0 = performance.now();
+  copycatDemo = { t, lane: copycatLane, t0, seq: stepSeq,
+                  fillAt: t0 + T.startDelayMs + T.blinkMs + T.fillStartMs,
+                  mergeOkAt: t0 + T.startDelayMs + T.blinkMs + T.mergeLaneAfterMs };
+  lastDemoStartAt = t0;
+  copycat.lane = targetShoulder;
+  const demoSeq = stepSeq;
+  const sameStep = () => stepSeq === demoSeq;
+
   setTimeout(() => {
     if (!copycat.el) { onSafe(); return; }
 
@@ -2151,6 +2619,7 @@ function runCopycatDemonstration(t, onSafe) {
       copycat.el.style.top = '80px';
 
       setTimeout(() => {
+        if (!sameStep()) return;   // V_15: a move made during the demo already closed the gap
         // If the player is currently on the opposite shoulder, the Copycat's lane is the FAR lane,
         // so we also advance its rear car into Slot 3 (336px) to keep the far lane completely full!
         const copycatLaneIsFar = isFarLaneWhenOnShoulder(copycatLane, playerLaneIdx);
@@ -2161,6 +2630,7 @@ function runCopycatDemonstration(t, onSafe) {
         followers.forEach((follower, idx) => {
           if (idx >= targetFillSlots.length || !follower.el) return;
           setTimeout(() => {
+            if (!sameStep()) return;
             animateCarTo(follower, targetFillSlots[idx] + follower.jitterY, T.fillMs, 'cubic-bezier(.25,.72,.25,1)', 0.72);
           }, idx * 150);
         });
@@ -2173,12 +2643,14 @@ function runCopycatDemonstration(t, onSafe) {
             trafficCars.push(promotedRear);
             // Starts after the cars ahead of it (so it never catches up), and before control returns.
             setTimeout(() => {
+              if (!sameStep()) return;
               animateCarTo(promotedRear, SLOTS_FAR_LANE[3] + promotedRear.jitterY, T.fillMs, 'cubic-bezier(.25,.72,.25,1)', 0.72);
             }, 300);
 
             const replacementRear = spawnTrafficCar(595, copycatLane, null, null, true);
             // Comes up from below only after the car ahead of it has started moving up (otherwise it drives into it).
             setTimeout(() => {
+              if (!sameStep()) return;
               animateCarTo(replacementRear, CFG.rearSlotFarY + replacementRear.jitterY, T.fillMs + 50, 'cubic-bezier(.22,.75,.24,1)', 0.78);
             }, 350);
           }
@@ -2313,6 +2785,13 @@ function edgeBump(dir) {
   setTimeout(() => st.classList.remove('rumble'), 280);
   invalidSidePresses++;
   logEvent('invalid_side_press_' + dir);
+  // V_15: hitting the guardrail costs the same as braking (shown like the brake cost, never in red).
+  const cost = Number(CFG.edgeBumpCost) || 0;
+  if (cost > 0) {
+    edgeBumpCostTrial += cost;
+    setScore(Math.max(0, score - cost), 'neutral');
+    showPop('−' + cost, 'brake');
+  }
 }
 
 function updateProgress() {
@@ -2360,32 +2839,26 @@ function nextDecision() {
   trialHiddenCount = 0;
   trialBlurCount = 0;
   invalidSidePresses = 0;
+  edgeBumpCostTrial = 0;
   updateProgress();
+  updateLighting();
+  setNavTarget(routeFrac(trial - 1), 500);
 
   // Fallback: an exposure trial whose demo was not started during the previous move (e.g. trial 1).
   if (isCopycatTrial(trial) && !copycatGates[trial]) startCopycatDemo(trial);
 
-  const gate = copycatGates[trial];
+  // V_15: the keys are open at once, also while a copycat demo is running (Yefim: in real life you can
+  // keep driving while someone else breaks a rule). See choose() for the one case that waits briefly.
   bufferOpen = false;
-  if (gate && !gate.safe) {
-    bufferedKey = null; // never carry a press into a copycat trial
-    setLocked(true);
-    gate.onSafe = () => {
-      setLocked(false);
-      trialStarted = performance.now();
-      renderDevStatus();
-    };
-  } else {
-    setLocked(false);
-    trialStarted = performance.now();
-    if (bufferedKey) {
-      const k = bufferedKey;
-      pendingBufferedRt = Math.round(bufferedAt - trialStarted);
-      bufferedKey = null;
-      renderDevStatus();
-      choose(k);
-      return;
-    }
+  setLocked(false);
+  trialStarted = performance.now();
+  if (bufferedKey) {
+    const k = bufferedKey;
+    pendingBufferedRt = Math.round(bufferedAt - trialStarted);
+    bufferedKey = null;
+    renderDevStatus();
+    choose(k);
+    return;
   }
   renderDevStatus();
 }
@@ -2397,12 +2870,14 @@ function rollFine() {
   return Math.random() < rule.p ? rule.fine : 0;
 }
 
-function choose(key) {
+function choose(key, fromQueue = false) {
   if (!['ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowDown'].includes(key)) return;
+  // Every press made while a copycat demo is running is counted (V_15: such presses are no longer blocked).
+  if (!fromQueue && copycatRunning && activeCopycatTrial) {
+    copycatPresses[activeCopycatTrial] = (copycatPresses[activeCopycatTrial] || 0) + 1;
+  }
   if (locked) {
-    if (copycatRunning && activeCopycatTrial) {
-      copycatPresses[activeCopycatTrial] = (copycatPresses[activeCopycatTrial] || 0) + 1;
-    } else if (bufferOpen && !bufferedKey) {
+    if (bufferOpen && !bufferedKey) {
       // Early press in the last moments of a move: carried over to the next trial.
       bufferedKey = key;
       bufferedAt = performance.now();
@@ -2410,25 +2885,54 @@ function choose(key) {
     return;
   }
 
-  // Pressing toward the guardrail while already at the road edge: neutral bump, turn is NOT used.
+  // Pressing toward the guardrail while already at the road edge: bump (V_15: costs CFG.edgeBumpCost), turn is NOT used.
   if ((key === 'ArrowRight' && playerLaneIdx === LANES.length - 1) || (key === 'ArrowLeft' && playerLaneIdx === 0)) {
     pendingBufferedRt = null;
     edgeBump(key === 'ArrowRight' ? 'right' : 'left');
     return;
   }
 
+  // V_15: a lane change INTO the copycat's lane in the first second of the demo, while a car there is still
+  // beside the player: the indicator goes on at once and the car moves over as soon as there is room
+  // (logged as merge_wait_ms). Every other choice runs at once.
+  if (!fromQueue && (key === 'ArrowLeft' || key === 'ArrowRight') && copycatDemo) {
+    const targetLane = LANES[playerLaneIdx + (key === 'ArrowLeft' ? -1 : 1)];
+    const wait = Math.round(copycatDemo.mergeOkAt - performance.now());
+    if (targetLane === copycatDemo.lane && wait > 0) {
+      const buffered = pendingBufferedRt !== null;
+      queuedMerge = { rt: buffered ? pendingBufferedRt : Math.round(performance.now() - trialStarted),
+                      buffered, waitMs: wait, runningAtPress: copycatRunning, visibleAtPress: copycatVisible };
+      pendingBufferedRt = null;
+      setLocked(true);
+      $('player').classList.add(key === 'ArrowLeft' ? 'blink-left' : 'blink-right');
+      const tq = trial;
+      setTimeout(() => {
+        if (trial !== tq || finished) return;
+        setLocked(false);
+        choose(key, true);
+      }, wait);
+      return;
+    }
+  }
+
   setLocked(true);
   const myStep = ++stepSeq;   // late timers of this move must not touch the next (chained) move
-  const copycatVisibleAtChoice = copycatVisible;
+  const q = fromQueue ? queuedMerge : null;
+  queuedMerge = null;
+  const copycatVisibleAtChoice = q ? q.visibleAtPress : copycatVisible;
+  const copycatRunningAtChoice = q ? q.runningAtPress : copycatRunning;
+  const ambientAtChoice = ambientCars.length;
+  const mergeWaitMs = q ? q.waitMs : 0;
   planTrial(trial + 1); // fix the next trial's phase/copycat now, before traffic is set up for it
   // rt < 0 means the key was pressed (and buffered) shortly before the trial opened.
-  const bufferedPress = pendingBufferedRt !== null;
-  const rt = bufferedPress ? pendingBufferedRt : Math.round(performance.now() - trialStarted);
+  const bufferedPress = q ? q.buffered : pendingBufferedRt !== null;
+  const rt = q ? q.rt : (bufferedPress ? pendingBufferedRt : Math.round(performance.now() - trialStarted));
   pendingBufferedRt = null;
   const p = $('player');
   const phase = phaseOf(trial);
 
   const laneBefore = LANES[playerLaneIdx];
+  ambLaneBefore = laneBefore;
   const wasOnShoulder = (laneBefore === 'shoulder' || laneBefore === 'leftShoulder');
 
   // ==========================================
@@ -2445,6 +2949,7 @@ function choose(key) {
     advanceTrafficForStep(brakeMs, trial + 1, 'brake', playerLaneIdx);
 
     worldOffset += CFG.brakeStepDist;
+    setNavTarget(routeFrac(trial), brakeMs);
     const w = $('world');
     if (crawlActive()) {
       glideTo(brakeMs);
@@ -2489,13 +2994,20 @@ function choose(key) {
         fine,
         score_after: finalScore,
         copycat_visible_at_choice: copycatVisibleAtChoice,
+        copycat_running_at_choice: copycatRunningAtChoice,
+        merge_wait_ms: mergeWaitMs,
+        ambient_cars_at_choice: ambientAtChoice,
         buffered_press: bufferedPress,
         rt
       });
       renderDevStatus();
-      maybeStartCopycatFor(trial + 1);
+      // V_15: a demo waits until the previous copycat has moved on (matters only after a very short move).
+      const nextT = trial + 1;
+      const demoWait = copycatStartWait(nextT);
+      if (demoWait > 0) setTimeout(() => maybeStartCopycatFor(nextT), demoWait);
+      else maybeStartCopycatFor(nextT);
 
-      setTimeout(nextDecision, nextTrialDelayMs);
+      setTimeout(nextDecision, Math.max(nextTrialDelayMs, demoWait));
     }, endTime(brakeMs));
     return;
   }
@@ -2665,6 +3177,7 @@ function choose(key) {
     advanceTrafficForStep(driveDuration, trial + 1, maneuverType, finalLaneIdxAfterStep);
 
     worldOffset += stepDist;
+    setNavTarget(routeFrac(trial), driveDuration);
     const w = $('world');
     const base = $('roadbase');
     if (crawlActive()) {
@@ -2721,13 +3234,20 @@ function choose(key) {
         fine,
         score_after: finalScore,
         copycat_visible_at_choice: copycatVisibleAtChoice,
+        copycat_running_at_choice: copycatRunningAtChoice,
+        merge_wait_ms: mergeWaitMs,
+        ambient_cars_at_choice: ambientAtChoice,
         buffered_press: bufferedPress,
         rt
       });
       renderDevStatus();
-      maybeStartCopycatFor(trial + 1);
+      // V_15: a demo waits until the previous copycat has moved on (matters only after a very short move).
+      const nextT = trial + 1;
+      const demoWait = copycatStartWait(nextT);
+      if (demoWait > 0) setTimeout(() => maybeStartCopycatFor(nextT), demoWait);
+      else maybeStartCopycatFor(nextT);
 
-      setTimeout(nextDecision, nextTrialDelayMs);
+      setTimeout(nextDecision, Math.max(nextTrialDelayMs, demoWait));
     }, endTime(driveDuration));
   }, turnLeadMs);
 }
@@ -2817,6 +3337,7 @@ function finish() {
   experimentDurationMs = Math.round(performance.now() - experimentStartPerf);
   bufferOpen = false;
   bufferedKey = null;
+  setNavTarget(1, 800);
   updateProgress();
   updateHud();
   showScreen(screensMode() === 'skip' ? 'testEnd' : 'arrived');
@@ -3119,17 +3640,17 @@ window.addEventListener('resize', fitLayout);
 // =====================================================================
 // EXPERIMENTER PANEL (test mode only). Removed from the page when CFG.testMode = false.
 // =====================================================================
-const SETTINGS_KEY = 'copycat_experiment_dev_settings_v10';
+// V_15: new key, so everyone's saved panel values reset to the new defaults (new fines).
+const SETTINGS_KEY = 'copycat_experiment_dev_settings_v15';
 const CFG_DEFAULTS = JSON.parse(JSON.stringify(CFG));
 const PARAM_KEYS = ['starting', 'jamStartTrial', 'openRoadReward', 'jamNormativeReward', 'shoulderReward',
-                    'brakeCost', 'high.p', 'high.fine', 'low.p', 'low.fine', 'crawl.durationScale'];
+                    'brakeCost', 'edgeBumpCost', 'high.p', 'high.fine', 'low.p', 'low.fine', 'crawl.durationScale'];
 const PRE_RUN_ONLY = ['starting', 'jamStartTrial'];
 const COUNT_PRESETS = { quick: CFG_DEFAULTS.countsTest, full: CFG_DEFAULTS.countsFull };
-// Candidate payoff sets for the discussion with Yefim (fines kept as in the proposal: EV = 45 in both regimes).
+// Payoff sets. 'agreed' = the numbers agreed with Yefim on 3 Nov 2026 (the defaults); 'proposal' = the proposal's example.
 const PAYOFF_PRESETS = {
-  v4:  { label: 'Shoulder 10 (V_4)', openRoadReward: 10, jamNormativeReward: 5, shoulderReward: 10, 'high.p': 0.9, 'high.fine': 50, 'low.p': 0.1, 'low.fine': 450 },
-  mid: { label: 'Shoulder 25',       openRoadReward: 10, jamNormativeReward: 5, shoulderReward: 25, 'high.p': 0.9, 'high.fine': 50, 'low.p': 0.1, 'low.fine': 450 },
-  hi:  { label: 'Shoulder 40',       openRoadReward: 10, jamNormativeReward: 5, shoulderReward: 40, 'high.p': 0.9, 'high.fine': 50, 'low.p': 0.1, 'low.fine': 450 }
+  agreed:   { label: 'Agreed 3 Nov (100%×11 · 10%×110)', openRoadReward: 10, jamNormativeReward: 5, shoulderReward: 10, 'high.p': 1, 'high.fine': 11, 'low.p': 0.1, 'low.fine': 110 },
+  proposal: { label: 'Proposal (90%×50 · 10%×450)',      openRoadReward: 10, jamNormativeReward: 5, shoulderReward: 10, 'high.p': 0.9, 'high.fine': 50, 'low.p': 0.1, 'low.fine': 450 }
 };
 
 function getParam(path) { return path.split('.').reduce((o, k) => o[k], CFG); }
@@ -3150,6 +3671,8 @@ function defaultSettings() {
     language: CFG_DEFAULTS.languageMode,
     feedbackStyle: CFG_DEFAULTS.feedbackStyle,
     motion: CFG_DEFAULTS.motion,
+    lighting: CFG_DEFAULTS.lighting,
+    ambient: CFG_DEFAULTS.ambientTraffic ? 'on' : 'off',
     params
   };
 }
@@ -3169,6 +3692,7 @@ function saveSettings() {
 }
 function applyTheme(t) {
   document.documentElement.dataset.scene = t;
+  updateLighting();   // V_15: the dark display gets a weaker light change
   const b = $('themeToggle');
   if (!b) return;
   const tt = TXT[lang] || TXT.en;
@@ -3225,6 +3749,8 @@ function setSetting(name, v) {
   else if (name === 'screens') SETTINGS.screens = v;
   else if (name === 'language') SETTINGS.language = v;
   else if (name === 'motion') { SETTINGS.motion = v; applyMotion(); }
+  else if (name === 'lighting') { SETTINGS.lighting = v; updateLighting(); }
+  else if (name === 'ambient') SETTINGS.ambient = v;
   saveSettings();
   renderDev();
   updateHud();
@@ -3271,7 +3797,7 @@ function renderDev() {
     const map = { runMode: SETTINGS.runMode, manualPhase: SETTINGS.manualPhase, social: SETTINGS.social, det: SETTINGS.det,
                   shoulder: SETTINGS.shoulder, fineOverride: SETTINGS.fineOverride, theme: SETTINGS.theme,
                   feedbackStyle: SETTINGS.feedbackStyle, motion: SETTINGS.motion, screens: SETTINGS.screens,
-                  language: SETTINGS.language };
+                  language: SETTINGS.language, lighting: SETTINGS.lighting, ambient: SETTINGS.ambient };
     seg.querySelectorAll('button[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === map[seg.dataset.setting])));
   });
   const manual = SETTINGS.runMode === 'manual';
@@ -3362,6 +3888,7 @@ function initDevPanel() {
 }
 
 initDevPanel();
+initNavMap();
 {
   let startTheme = CFG.theme;
   try { startTheme = localStorage.getItem('driving_display') || CFG.theme; } catch (e) { /* not available */ }
