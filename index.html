@@ -322,6 +322,12 @@ body {
   z-index: 3;
   pointer-events: none;
 }
+/* V_17: chequered finish line, reached on the last move */
+.finish-line {
+  position: absolute; left: 10%; right: 10%; height: 24px; z-index: 2; pointer-events: none;
+  background: repeating-conic-gradient(#1b1f24 0 25%, #f4f6f8 0 50%) 0 0 / 24px 24px;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .55), 0 3px 8px rgba(0, 0, 0, .35);
+}
 /* V_15: scenery shadows follow the sun */
 .scenery svg { overflow: visible; }
 .scenery .shd { transform: translate(var(--tr-x), var(--tr-y)); }
@@ -1092,6 +1098,16 @@ const CFG = {
   // V_15: light, irregular traffic on the open road (normative lanes only, never on the shoulder).
   ambientTraffic: true,
   ambient: { maxCars: 4, maxPerLane: 2 },
+  // V_17: the jam is alive while the participant waits. Each lane creeps forward in slow waves (front car
+  // first, the rest following), so the queue ahead stops at most aheadPx further away; the next move closes
+  // the gap again. Now and then a car near the top of the screen changes between the two normal lanes.
+  // Never on a shoulder, never in the gap beside the player, never in exposure trials (in any condition).
+  jamLife: {
+    waves: true, aheadPx: 34, rearPx: 10, incPx: [8, 15], carGapMs: 260, moveMs: 800,
+    firstMs: [250, 1100], pauseMs: [900, 2300],
+    laneChanges: true, laneChangeP: 0.3, laneChangeAtMs: [700, 2200]
+  },
+  finishLineY: 326,          // V_17: screen y of the finish line when the last move ends (the car's nose is on it)
   freeDriveMs: 1050,
   jamDriveMs: 1650,
   shoulderDriveMs: 1180,
@@ -1381,7 +1397,7 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_16';
+const VERSION = 'V_17';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
 const isJamTrial = t => t >= CFG.jamStartTrial;
@@ -1462,6 +1478,7 @@ function crawlFrame(ts) {
     }
   }
   renderAmbient();   // V_15
+  renderWaves(ts);   // V_17
   navFrame(ts);      // V_15
   requestAnimationFrame(crawlFrame);
 }
@@ -1579,6 +1596,8 @@ function baseRecord() {
     motion: motionMode(),
     invalid_side_presses: invalidSidePresses,
     edge_bump_cost: edgeBumpCostTrial,
+    jam_waves: jamWavesTrial,
+    npc_lane_changes: npcLaneChangesTrial,
     light_level: +currentLight.toFixed(3),
     feedback_style: feedbackStyle(),
     theme: document.documentElement.dataset.scene,
@@ -2117,6 +2136,178 @@ function copycatStartWait(t) {
   return Math.max(0, Math.round(lastDemoStartAt + CFG.copycat.minGapMs - performance.now()));
 }
 
+// =====================================================================
+// V_17: A LIVING JAM (waves and lane changes while the participant waits)
+// * Waves: each lane creeps forward from its front car backwards, a few pixels at a time, with brake lights
+//   going off while a car moves. Cars ahead stop at most jamLife.aheadPx further away; rear cars move at most
+//   rearPx (so the gap beside the player stays open). The offset is a separate visual layer ('translate'),
+//   so the traffic engine's positions never change; at the next move every offset returns to 0 together.
+// * Lane changes: now and then the front car of one normal lane drives off the top of the screen and the
+//   front car of the other lane signals and moves into the space. Only near the top of the screen, far
+//   from the player; never onto a shoulder; never in exposure trials (in any condition); not during a demo.
+// Both run only while a decision is open, use the same rates in every condition, and are logged per trial
+// (jam_waves, npc_lane_changes) and as events.
+// =====================================================================
+let waveToken = 0;
+let laneCreep = {};
+let frozenWaveLanes = new Set();
+let jamWavesTrial = 0;
+let npcLaneChangesTrial = 0;
+const wavingCars = new Set();
+const exitingCars = new Set();     // front cars driving off the top during a lane change
+const easeInOut = u => (u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2);
+function waveNow(car, now) {
+  const w = car.wave;
+  if (!w) return 0;
+  const u = Math.max(0, Math.min(1, (now - w.t0) / w.dur));
+  return w.from + (w.to - w.from) * easeInOut(u);
+}
+function setWave(car, px, ms) {
+  if (!car || !car.el) return;
+  const now = performance.now();
+  car.wave = { from: waveNow(car, now), to: px, t0: now, dur: Math.max(1, ms) };
+  wavingCars.add(car);
+}
+function renderWaves(now) {
+  wavingCars.forEach(car => {
+    if (car.removed || !car.el || !car.wave) { wavingCars.delete(car); return; }
+    const v = waveNow(car, now);
+    car.waveVis = v;
+    car.el.style.translate = Math.abs(v) > 0.05 ? `0 ${v.toFixed(1)}px` : '';
+    if (car.wave.to === 0 && now - car.wave.t0 >= car.wave.dur) {
+      car.wave = null; car.waveVis = 0; car.el.style.translate = ''; wavingCars.delete(car);
+    }
+  });
+}
+// Moves a car's wave offset into its real position (used before a car leaves its lane).
+function bakeWave(car) {
+  const top = parseFloat(getComputedStyle(car.el).top) || car.y;
+  const v = car.wave ? waveNow(car, performance.now()) : 0;
+  car.wave = null; car.waveVis = 0; wavingCars.delete(car);
+  car.el.style.transition = 'none';
+  car.el.style.translate = '';
+  car.y = top + v;
+  car.el.style.top = car.y + 'px';
+  void car.el.offsetHeight;
+}
+// A move starts: stop the waves and bring every offset back to 0 together (same time, same easing).
+function endJamLife(ms) {
+  waveToken++;
+  // A car still driving off the top leaves at once (out of sight before new cars come in from above).
+  exitingCars.forEach(c => { if (!c.removed && c.el) animateCarTo(c, -330, 240, 'linear', 0); });
+  laneCreep = {};
+  frozenWaveLanes.clear();
+  wavingCars.forEach(car => { if (car.wave && car.wave.to !== 0) setWave(car, 0, ms); });
+}
+function startJamLife() {
+  waveToken++;
+  const tok = waveToken;
+  laneCreep = {};
+  frozenWaveLanes.clear();
+  const L = CFG.jamLife;
+  if (!L || !running || finished || !isJamTrial(trial)) return;
+  if (L.waves) ['left', 'right'].forEach(lane => setTimeout(() => waveLoop(lane, tok), randInt(L.firstMs[0], L.firstMs[1])));
+  if (L.laneChanges && phaseOf(trial) !== 'social_exposure' && Math.random() < L.laneChangeP) {
+    setTimeout(() => tryNpcLaneChange(tok), randInt(L.laneChangeAtMs[0], L.laneChangeAtMs[1]));
+  }
+}
+function demoBusy(lane) {
+  return copycatDemo && performance.now() < copycatDemo.t0 + 4000 && (!lane || copycatDemo.lane === lane);
+}
+function waveLoop(lane, tok) {
+  const L = CFG.jamLife;
+  if (tok !== waveToken || frozenWaveLanes.has(lane)) return;
+  if (demoBusy(lane)) { setTimeout(() => waveLoop(lane, tok), 600); return; }
+  const done = laneCreep[lane] || 0;
+  if (done >= L.aheadPx - 0.5) return;                       // the queue has stopped
+  const inc = Math.min(randInt(L.incPx[0], L.incPx[1]), L.aheadPx - done);
+  const total = done + inc;
+  laneCreep[lane] = total;
+  const ahead = trafficCars.filter(c => c.lane === lane && !c.removed && !c.zipping).sort((a, b) => a.y - b.y);
+  const rear = rearCars.filter(c => c.lane === lane && !c.removed);
+  const cars = [...ahead, ...rear];
+  if (!cars.length) return;
+  jamWavesTrial++;
+  cars.forEach((c, i) => setTimeout(() => {
+    if (tok !== waveToken || c.removed || c.zipping || frozenWaveLanes.has(lane)) return;
+    const target = -(rear.includes(c) ? Math.min(L.rearPx, total) : total);
+    if (Math.abs(target - (c.wave ? c.wave.to : 0)) < 0.5) return;
+    c.el.classList.remove('braking');
+    setWave(c, target, L.moveMs);
+    setTimeout(() => { if (tok === waveToken && !c.removed && !c.zipping) c.el.classList.add('braking'); }, L.moveMs - 60);
+  }, i * L.carGapMs));
+  setTimeout(() => waveLoop(lane, tok), cars.length * L.carGapMs + L.moveMs + randInt(L.pauseMs[0], L.pauseMs[1]));
+}
+function visTop(c) {   // where the car is drawn now, and where it is heading (the higher of the two)
+  const top = parseFloat(getComputedStyle(c.el).top);
+  const now = (Number.isFinite(top) ? top : c.y) + (c.wave ? waveNow(c, performance.now()) : 0);
+  const goal = c.y + (c.wave ? c.wave.to : 0);
+  return { now, min: Math.min(now, goal) };
+}
+function tryNpcLaneChange(tok) {
+  if (tok !== waveToken || !running || finished || locked) return;
+  if (phaseOf(trial) === 'social_exposure' || demoBusy()) return;
+  // Wait until no car in the two lanes is still moving into place after the last move.
+  const settling = [...trafficCars, ...rearCars].some(c => c.el && !c.removed &&
+    c.el.getAnimations().some(a => a.transitionProperty === 'top' || a.transitionProperty === 'left'));
+  if (settling) { setTimeout(() => tryNpcLaneChange(tok), 350); return; }
+  const order = Math.random() < 0.5 ? [['left', 'right'], ['right', 'left']] : [['right', 'left'], ['left', 'right']];
+  for (const [A, B] of order) {
+    const byTop = (a, b) => visTop(a).now - visTop(b).now;
+    const aCars = trafficCars.filter(c => c.lane === A && !c.removed && !c.zipping).sort(byTop);
+    const bCars = trafficCars.filter(c => c.lane === B && !c.removed && !c.zipping).sort(byTop);
+    if (aCars.length < 2 || bCars.length < 2) continue;
+    const mover = aCars[0], exitCar = bCars[0], nextB = bCars[1];
+    const mv = visTop(mover).now, ev = visTop(exitCar).now, nb = visTop(nextB).min;
+    if (mv < -45 || mv > 60 || ev > 70) continue;
+    const ty = Math.round(Math.min(mv, nb - 82 - 16));
+    if (ty < -45) continue;
+    runNpcLaneChange(mover, exitCar, A, B, ty);
+    return;
+  }
+}
+function runNpcLaneChange(mover, exitCar, A, B, ty) {
+  const seq = stepSeq;
+  npcLaneChangesTrial++;
+  logEvent('npc_lane_change_' + A + '_to_' + B);
+  frozenWaveLanes.add(A); frozenWaveLanes.add(B);
+  // The front car of lane B drives off the top of the screen.
+  trafficCars = trafficCars.filter(c => c !== exitCar);
+  exitingCars.add(exitCar);
+  bakeWave(exitCar);
+  exitCar.el.classList.remove('braking');
+  animateCarTo(exitCar, -240, 1300, 'cubic-bezier(.5,0,.8,.45)', 0);
+  setTimeout(() => { if (exitCar.el) exitCar.el.remove(); exitCar.removed = true; exitingCars.delete(exitCar); }, 1400);
+  // The front car of lane A signals, then moves over (unless the participant has already moved on).
+  bakeWave(mover);
+  mover.zipping = true;
+  const blink = B === 'left' ? 'blink-left' : 'blink-right';
+  const steer = B === 'left' ? 'steer-left' : 'steer-right';
+  mover.el.classList.add(blink);
+  setTimeout(() => {
+    if (stepSeq !== seq || mover.removed) { mover.el.classList.remove(blink); mover.zipping = false; return; }
+    mover.lane = B;
+    mover.el.classList.remove('braking');
+    mover.el.classList.add(steer);
+    mover.el.style.transition = 'left 900ms cubic-bezier(.3,.1,.3,1), top 900ms cubic-bezier(.3,.1,.3,1)';
+    mover.el.style.left = laneX(B) + '%';
+    mover.y = ty;
+    mover.el.style.top = ty + 'px';
+    setTimeout(() => mover.el.classList.remove(steer), 700);
+    setTimeout(() => { mover.el.classList.remove(blink); mover.el.classList.add('braking'); mover.zipping = false; }, 1150);
+  }, 550);
+}
+
+// V_17: chequered finish line, placed so that the last move ends with the car's nose on it.
+function placeFinishLine(d) {
+  if (isManual() || trial !== totalTrials() || $('finishLine')) return;
+  const el = document.createElement('div');
+  el.id = 'finishLine';
+  el.className = 'finish-line';
+  el.style.top = screenToWorldY(CFG.finishLineY - d) + 'px';
+  $('objects').appendChild(el);
+}
+
 function planTrial(t) {
   if (t in trialPhase) return;
   if (!isManual() && t > totalTrials()) return;
@@ -2317,6 +2508,7 @@ function updateRearTrafficForStep(durationMs, upcomingTrial, maneuverType, newPl
 }
 
 function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlayerLaneIdx) {
+  endJamLife(Math.round(durationMs * 0.55));   // V_17
   // V_15: open-road traffic moves with this step, or joins the queue when the jam begins.
   if (isJamTrial(upcomingTrial)) {
     if (ambientCars.length) absorbAmbientIntoJam(newPlayerLaneIdx, durationMs);
@@ -2373,7 +2565,7 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
       const seq1 = stepSeq;
       const later1 = fn => (hold1 > 0 ? setTimeout(() => { if (stepSeq === seq1) fn(); }, hold1) : fn());
       while (laneCars.length < 3) {
-        const topY = laneCars.length > 0 ? laneCars[0].y - 106 : -140;
+        const topY = laneCars.length > 0 ? Math.min(-100, laneCars[0].y - 106) : -140;   // V_17: always above the screen
         laneCars.unshift(spawnTrafficCar(topY, lane));
       }
       // If laneCars already had 4 cars (because player was already on the opposite shoulder),
@@ -2388,7 +2580,7 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
         later1(() => animateCarTo(tailCar, baseRearY + tailCar.jitterY, Math.max(700, Math.round(durationMs * (crawlActive() ? 0.6 : 1)) - hold1), 'cubic-bezier(.24,.72,.24,1)', 0.78));
       }
 
-      const newLead = spawnTrafficCar(-140, lane);
+      const newLead = spawnTrafficCar(Math.min(-140, laneCars[0].y - 106), lane);   // V_17: above the top car
       laneCars.unshift(newLead);
 
       const socialTargets = [SLOTS_ADJACENT_LANE[0], SLOTS_ADJACENT_LANE[1], SLOTS_ADJACENT_LANE[2], 334];
@@ -2404,10 +2596,10 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
     // CASE 2: Player Exits to Shoulder OR Continues on Shoulder OR Overtakes & Merges Back
     if (maneuverType === 'enter_shoulder' || maneuverType === 'stay_shoulder' || maneuverType === 'overtake_and_merge') {
       while (laneCars.length < 3) {
-        const topY = laneCars.length > 0 ? laneCars[0].y - 106 : -140;
+        const topY = laneCars.length > 0 ? Math.min(-100, laneCars[0].y - 106) : -140;   // V_17: always above the screen
         laneCars.unshift(spawnTrafficCar(topY, lane));
       }
-      const newHorizonCar = spawnTrafficCar(-140, lane);
+      const newHorizonCar = spawnTrafficCar(Math.min(-140, laneCars[0].y - 106), lane);   // V_17: above the top car
       laneCars.unshift(newHorizonCar);
       // V_16: one shoulder move passes CFG.shoulderPassCars cars (more cars come in from the top).
       const pass = maneuverType === 'overtake_and_merge' ? 1 : Math.max(1, CFG.shoulderPassCars || 1);
@@ -2458,7 +2650,7 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
     const hold3 = demoHoldMs(lane);   // V_15: see CASE 1
     const seq3 = stepSeq;
     while (laneCars.length < desiredCount) {
-      const topY = laneCars.length > 0 ? laneCars[0].y - 106 : -140;
+      const topY = laneCars.length > 0 ? Math.min(-100, laneCars[0].y - 106) : -140;   // V_17: always above the screen
       laneCars.unshift(spawnTrafficCar(topY, lane));
     }
 
@@ -2797,6 +2989,8 @@ function nextDecision() {
   trialBlurCount = 0;
   invalidSidePresses = 0;
   edgeBumpCostTrial = 0;
+  jamWavesTrial = 0;
+  npcLaneChangesTrial = 0;
   updateProgress();
   updateLighting();
   setNavTarget(routeFrac(trial - 1), 500);
@@ -2809,6 +3003,7 @@ function nextDecision() {
   bufferOpen = false;
   setLocked(false);
   trialStarted = performance.now();
+  startJamLife();   // V_17
   if (bufferedKey) {
     const k = bufferedKey;
     pendingBufferedRt = Math.round(bufferedAt - trialStarted);
@@ -2903,6 +3098,7 @@ function choose(key, fromQueue = false) {
     seedSceneryUpTo(screenToWorldY(-1100));
     advanceTrafficForStep(brakeMs, trial + 1, 'brake', playerLaneIdx);
 
+    placeFinishLine(CFG.brakeStepDist);   // V_17
     worldOffset += CFG.brakeStepDist;
     setNavTarget(routeFrac(trial), brakeMs);
     const w = $('world');
@@ -3131,6 +3327,7 @@ function choose(key, fromQueue = false) {
 
     advanceTrafficForStep(driveDuration, trial + 1, maneuverType, finalLaneIdxAfterStep);
 
+    placeFinishLine(stepDist);   // V_17
     worldOffset += stepDist;
     setNavTarget(routeFrac(trial), driveDuration);
     const w = $('world');
@@ -3298,7 +3495,15 @@ function finish() {
   if (na) { na.textContent = TXT[lang].navArrived; setTimeout(() => na.classList.add('show'), 750); }
   updateProgress();
   updateHud();
-  showScreen(screensMode() === 'skip' ? 'testEnd' : 'arrived');
+  endJamLife(400);
+  // V_17: the end screen waits until the car has rolled onto the finish line (plus a short moment).
+  const t0 = performance.now();
+  const showEnd = () => {
+    const rolling = crawlActive() && worldOffset - crawl.shown > 1;
+    if (rolling && performance.now() - t0 < 3000) { requestAnimationFrame(showEnd); return; }
+    setTimeout(() => { showScreen(screensMode() === 'skip' ? 'testEnd' : 'arrived'); renderDevStatus(); }, $('finishLine') ? 700 : 0);
+  };
+  showEnd();
   renderDevStatus();
 }
 
