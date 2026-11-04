@@ -834,9 +834,8 @@ body.layout-side .hint { max-width: 180px; text-align: center; }
   from { translate: 0 0; }
   to   { translate: 0 calc(-1 * var(--idle-amp, 3px)); }
 }
-html.motion-smooth .npc .car-chassis {
-  animation: idleCreep var(--idle-dur, 2.2s) ease-in-out var(--idle-delay, 0s) infinite alternate;
-}
+/* V_18: removed (Lihi: standing cars looked as if they were floating). The jam's motion now comes from the
+   waves and the accordion in jamLife. */
 
 /* Trip progress bar along the bottom of the HUD (based on trials, not distance, so it never rewards a choice). */
 .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--progress-track); }
@@ -997,8 +996,8 @@ body.layout-side .navsvg { width: 168px; height: 238px; }
     <h3>Phase <span class="dev-sub">applies from the next trial</span></h3>
     <div class="seg" data-setting="manualPhase">
       <button data-v="baseline">Baseline</button>
-      <button data-v="social_exposure">Exposure</button>
-      <button data-v="exploit">Exploit</button>
+      <button data-v="exposure_copycat">Copycat</button>
+      <button data-v="exposure">Exposure</button>
       <button data-v="deterrence">Deterrence</button>
     </div>
   </section>
@@ -1007,14 +1006,14 @@ body.layout-side .navsvg { width: 168px; height: 238px; }
     <h3>Trials per phase <span class="dev-sub" id="countTotal"></span></h3>
     <div class="grid2">
       <label>Baseline <input type="number" min="0" step="1" data-count="baseline"></label>
-      <label>Exposure <input type="number" min="0" step="1" data-count="socialExposure"></label>
-      <label>Exploit <input type="number" min="0" step="1" data-count="exploit"></label>
+      <label>Exposure (no fines) <input type="number" min="0" step="1" data-count="exposure"></label>
       <label>Deterrence <input type="number" min="0" step="1" data-count="deterrence"></label>
     </div>
     <div class="dev-row">
-      <button class="dev-btn" data-countpreset="quick">Quick (5·2·2·4)</button>
-      <button class="dev-btn" data-countpreset="full">Full (20·2·4·20)</button>
+      <button class="dev-btn" data-countpreset="quick">Quick (5·6·4)</button>
+      <button class="dev-btn" data-countpreset="full">Pilot (15·10·30)</button>
     </div>
+    <p class="dev-note">The copycat appears on exposure trials 1 and 4 (copycat condition only; the control condition gets the same trials without it).</p>
   </section>
 
   <section class="dev-sec">
@@ -1070,8 +1069,12 @@ body.layout-side .navsvg { width: 168px; height: 238px; }
 // ==========================================
 const CFG = {
   testMode: true,
-  countsTest: { baseline: 5, socialExposure: 2, exploit: 2, deterrence: 4 },
-  countsFull: { baseline: 20, socialExposure: 2, exploit: 4, deterrence: 20 },
+  // V_18 pilot structure (approved by Lihi, 4 Nov 2026): baseline 15 (2 open road + 13 jam), exposure 10
+  // (no fines; exposure and exploit merged), deterrence 30. The copycat appears on exposure trials 1 and 4
+  // (trials 16 and 19 overall), leaving 6 trials without a social model before the fines start.
+  countsTest: { baseline: 5, exposure: 6, deterrence: 4 },
+  countsFull: { baseline: 15, exposure: 10, deterrence: 30 },
+  copycatAt: [1, 4],        // positions within the exposure phase (the same trials in both conditions)
   starting: 2000,
   // First trial on which the traffic jam is active (trials before it = open road).
   jamStartTrial: 3,
@@ -1103,9 +1106,14 @@ const CFG = {
   // the gap again. Now and then a car near the top of the screen changes between the two normal lanes.
   // Never on a shoulder, never in the gap beside the player, never in exposure trials (in any condition).
   jamLife: {
-    waves: true, aheadPx: 34, rearPx: 10, incPx: [8, 15], carGapMs: 260, moveMs: 800,
-    firstMs: [250, 1100], pauseMs: [900, 2300],
-    laneChanges: true, laneChangeP: 0.3, laneChangeAtMs: [700, 2200]
+    // waves while waiting (V_18: start sooner, bigger steps). rearPx = own lane (behind the player);
+    // the rear car of the other lanes creeps up to the edge of the gap beside the player (pocketTop).
+    waves: true, aheadPx: 34, rearPx: 12, otherRearPx: 32, pocketTop: 432, incPx: [10, 18], carGapMs: 240, moveMs: 750,
+    firstMs: [150, 700], pauseMs: [700, 1800],
+    // V_18 accordion: during each move every car falls back a little and catches up again, by an amount that
+    // grows from the front of the queue to the back, with its own timing per lane (no more moving as one block).
+    accordion: true, accordionPx: 36,
+    laneChanges: true, laneChangeP: 0.4, laneChangeAtMs: [100, 900]
   },
   finishLineY: 326,          // V_17: screen y of the finish line when the last move ends (the car's nose is on it)
   freeDriveMs: 1050,
@@ -1397,7 +1405,7 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_17';
+const VERSION = 'V_18';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
 const isJamTrial = t => t >= CFG.jamStartTrial;
@@ -1405,7 +1413,7 @@ const isJamTrial = t => t >= CFG.jamStartTrial;
 const isManual = () => CFG.testMode && SETTINGS.runMode === 'manual';
 const activeCounts = () => CFG.testMode ? SETTINGS.counts : CFG.countsFull;
 const totalTrials = () => isManual() ? Infinity : Object.values(activeCounts()).reduce((a, b) => a + b, 0);
-const PHASE_LABEL = { baseline: 'Baseline', social_exposure: 'Exposure', exploit: 'Exploit', deterrence: 'Deterrence' };
+const PHASE_LABEL = { baseline: 'Baseline', exposure: 'Exposure', exposure_copycat: 'Exposure + copycat', deterrence: 'Deterrence' };
 
 const LANES = ['leftShoulder', 'left', 'right', 'shoulder'];
 let playerLaneIdx = 2;
@@ -1587,6 +1595,8 @@ function baseRecord() {
     run_mode: CFG.testMode ? SETTINGS.runMode : 'real',
     trial,
     phase: phaseOf(trial),
+    exposure_pos: exposurePos(trial),
+    copycat_slot: copycatSlotOf(trial),
     jam: isJamTrial(trial),
     copycat_shown: !!copycatInfo[trial],
     copycat_id: copycatInfo[trial] ? copycatInfo[trial].id : null,
@@ -2125,8 +2135,10 @@ function absorbAmbientIntoJam(newPlayerLaneIdx, durationMs) {
 // V_15: if a copycat demo in this lane has just started, the cars there start closing up only once the
 // copycat has pulled out (at the moment the demo itself would start closing the gap).
 function demoHoldMs(lane) {
-  if (!copycatDemo || copycatDemo.lane !== lane) return 0;
-  return Math.max(0, Math.round(copycatDemo.fillAt - performance.now()));
+  const now = performance.now();
+  const zip = Math.max(0, Math.round((laneHoldUntil[lane] || 0) - now));   // V_18: a car is still moving out of this lane
+  if (!copycatDemo || copycatDemo.lane !== lane) return zip;
+  return Math.max(zip, Math.round(copycatDemo.fillAt - now));
 }
 // V_15: the next demo never starts sooner than minGapMs after the previous one (same shoulder).
 function copycatStartWait(t) {
@@ -2192,6 +2204,7 @@ function bakeWave(car) {
 }
 // A move starts: stop the waves and bring every offset back to 0 together (same time, same easing).
 function endJamLife(ms) {
+  if (pendingZip) pendingZip.commit();   // V_18: a lane change that has signalled goes ahead
   waveToken++;
   // A car still driving off the top leaves at once (out of sight before new cars come in from above).
   exitingCars.forEach(c => { if (!c.removed && c.el) animateCarTo(c, -330, 240, 'linear', 0); });
@@ -2207,7 +2220,7 @@ function startJamLife() {
   const L = CFG.jamLife;
   if (!L || !running || finished || !isJamTrial(trial)) return;
   if (L.waves) ['left', 'right'].forEach(lane => setTimeout(() => waveLoop(lane, tok), randInt(L.firstMs[0], L.firstMs[1])));
-  if (L.laneChanges && phaseOf(trial) !== 'social_exposure' && Math.random() < L.laneChangeP) {
+  if (L.laneChanges && !copycatSlotOf(trial) && Math.random() < L.laneChangeP) {
     setTimeout(() => tryNpcLaneChange(tok), randInt(L.laneChangeAtMs[0], L.laneChangeAtMs[1]));
   }
 }
@@ -2228,9 +2241,16 @@ function waveLoop(lane, tok) {
   const cars = [...ahead, ...rear];
   if (!cars.length) return;
   jamWavesTrial++;
+  // V_18: how far the rear car may creep: little behind the player, up to the edge of the gap elsewhere.
+  const playerLane = LANES[playerLaneIdx];
+  const rearCap = c => {
+    if (lane === playerLane) return L.rearPx;
+    if (isFarLaneWhenOnShoulder(lane, playerLaneIdx)) return Math.min(L.otherRearPx, total + 20);
+    return Math.max(0, Math.min(L.otherRearPx, c.y - L.pocketTop));
+  };
   cars.forEach((c, i) => setTimeout(() => {
     if (tok !== waveToken || c.removed || c.zipping || frozenWaveLanes.has(lane)) return;
-    const target = -(rear.includes(c) ? Math.min(L.rearPx, total) : total);
+    const target = -(rear.includes(c) ? Math.min(rearCap(c), total + 8) : total);
     if (Math.abs(target - (c.wave ? c.wave.to : 0)) < 0.5) return;
     c.el.classList.remove('braking');
     setWave(c, target, L.moveMs);
@@ -2246,11 +2266,9 @@ function visTop(c) {   // where the car is drawn now, and where it is heading (t
 }
 function tryNpcLaneChange(tok) {
   if (tok !== waveToken || !running || finished || locked) return;
-  if (phaseOf(trial) === 'social_exposure' || demoBusy()) return;
-  // Wait until no car in the two lanes is still moving into place after the last move.
-  const settling = [...trafficCars, ...rearCars].some(c => c.el && !c.removed &&
-    c.el.getAnimations().some(a => a.transitionProperty === 'top' || a.transitionProperty === 'left'));
-  if (settling) { setTimeout(() => tryNpcLaneChange(tok), 350); return; }
+  if (copycatSlotOf(trial) || demoBusy()) return;
+  // V_18: wait only until the cars involved have stopped moving into place after the last move.
+  const moving = c => c.el.getAnimations().some(a => a.transitionProperty === 'top' || a.transitionProperty === 'left');
   const order = Math.random() < 0.5 ? [['left', 'right'], ['right', 'left']] : [['right', 'left'], ['left', 'right']];
   for (const [A, B] of order) {
     const byTop = (a, b) => visTop(a).now - visTop(b).now;
@@ -2258,8 +2276,9 @@ function tryNpcLaneChange(tok) {
     const bCars = trafficCars.filter(c => c.lane === B && !c.removed && !c.zipping).sort(byTop);
     if (aCars.length < 2 || bCars.length < 2) continue;
     const mover = aCars[0], exitCar = bCars[0], nextB = bCars[1];
+    if (moving(mover) || moving(exitCar) || moving(nextB)) { setTimeout(() => tryNpcLaneChange(tok), 250); return; }
     const mv = visTop(mover).now, ev = visTop(exitCar).now, nb = visTop(nextB).min;
-    if (mv < -45 || mv > 60 || ev > 70) continue;
+    if (mv < -30 || mv > 70 || ev > 75) continue;   // V_18: the mover is (mostly) on screen
     const ty = Math.round(Math.min(mv, nb - 82 - 16));
     if (ty < -45) continue;
     runNpcLaneChange(mover, exitCar, A, B, ty);
@@ -2284,18 +2303,59 @@ function runNpcLaneChange(mover, exitCar, A, B, ty) {
   const blink = B === 'left' ? 'blink-left' : 'blink-right';
   const steer = B === 'left' ? 'steer-left' : 'steer-right';
   mover.el.classList.add(blink);
-  setTimeout(() => {
-    if (stepSeq !== seq || mover.removed) { mover.el.classList.remove(blink); mover.zipping = false; return; }
+  // V_18: the move over always happens: after the indicator, or at once if the participant moves first
+  // (endJamLife calls commit). Cars filling lane A from above wait until the mover is clear (laneHoldUntil).
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    if (pendingZip && pendingZip.commit === commit) pendingZip = null;
+    if (mover.removed) return;
+    laneHoldUntil[A] = performance.now() + 650;
     mover.lane = B;
     mover.el.classList.remove('braking');
     mover.el.classList.add(steer);
-    mover.el.style.transition = 'left 900ms cubic-bezier(.3,.1,.3,1), top 900ms cubic-bezier(.3,.1,.3,1)';
+    mover.el.style.transition = 'left 1050ms cubic-bezier(.3,.1,.3,1), top 1050ms cubic-bezier(.3,.1,.3,1)';
     mover.el.style.left = laneX(B) + '%';
     mover.y = ty;
     mover.el.style.top = ty + 'px';
-    setTimeout(() => mover.el.classList.remove(steer), 700);
-    setTimeout(() => { mover.el.classList.remove(blink); mover.el.classList.add('braking'); mover.zipping = false; }, 1150);
-  }, 550);
+    setTimeout(() => mover.el.classList.remove(steer), 800);
+    setTimeout(() => { mover.el.classList.remove(blink); mover.el.classList.add('braking'); mover.zipping = false; }, 1300);
+  };
+  pendingZip = { commit };
+  setTimeout(commit, 450);
+}
+let pendingZip = null;
+const laneHoldUntil = {};
+
+// V_18: ACCORDION. During a move each car in a lane falls back a little and catches up again, so the queue
+// stretches and closes instead of moving as one block. The amount grows from the front car to the back
+// (cars never close up on the car ahead); every lane gets its own random timing. In the lanes the player
+// drives in during the move, cars ahead never come closer than 16px to the player. All offsets are back to 0
+// before the next decision opens (by 62% of the move; the decision opens at 70%).
+function jamAccordion(lane, list, durationMs, occupied) {
+  const L = CFG.jamLife;
+  if (!L.accordion || !list.length) return;
+  const PY = CFG.playerNormY;
+  const ahead = list.filter(o => o.car.y < PY);
+  let cap = L.accordionPx;
+  if (occupied.includes(lane)) {
+    ahead.forEach(o => { cap = Math.min(cap, Math.max(0, (PY - 16 - 82) - Math.max(o.car.y, o.restY))); });
+  }
+  const rear = rearCars.find(c => c.lane === lane && !c.removed && !c.departing);
+  let a = 0;
+  const amps = list.map((o, i) => (a = Math.min(cap, i === 0 ? randInt(3, 9) : a + randInt(6, 12))));
+  const rearAmp = Math.min(L.accordionPx + 10, a + randInt(4, 10));
+  const rise = Math.round(durationMs * (0.12 + Math.random() * 0.14));
+  const back = Math.round(durationMs * (0.28 + Math.random() * 0.08));
+  const seq = stepSeq;
+  const items = list.map((o, i) => [o.car, amps[i]]);
+  if (rear) items.push([rear, rearAmp]);
+  items.forEach(([car, amp]) => {
+    if (amp < 0.5) return;
+    setWave(car, amp, rise);
+    setTimeout(() => { if (stepSeq === seq && !car.removed) setWave(car, 0, back); }, rise);
+  });
 }
 
 // V_17: chequered finish line, placed so that the last move ends with the car's nose on it.
@@ -2308,25 +2368,41 @@ function placeFinishLine(d) {
   $('objects').appendChild(el);
 }
 
+const trialSlot = {};   // V_18: trial -> is it a copycat trial position (true in both conditions)
 function planTrial(t) {
   if (t in trialPhase) return;
   if (!isManual() && t > totalTrials()) return;
   trialPhase[t] = computePhase(t);
-  trialCopycat[t] = (trialPhase[t] === 'social_exposure' && socialCondition === 'experimental');
+  trialSlot[t] = isCopycatSlot(t);
+  trialCopycat[t] = trialSlot[t] && socialCondition === 'experimental';
 }
+// V_18: position within the exposure phase (1..n), or null outside it.
+function exposurePos(t) {
+  if (isManual()) return null;
+  const c = activeCounts();
+  const k = t - c.baseline;
+  return (k >= 1 && k <= c.exposure) ? k : null;
+}
+// A copycat position: the copycat drives onto the shoulder here in the copycat condition; the control
+// condition gets the same trials without it.
+function isCopycatSlot(t) {
+  if (isManual()) return SETTINGS.manualPhase === 'exposure_copycat';
+  const k = exposurePos(t);
+  return k !== null && CFG.copycatAt.includes(k);
+}
+function copycatSlotOf(t) { return (t in trialSlot) ? trialSlot[t] : isCopycatSlot(t); }
 function isCopycatTrial(t) {
   if (t in trialCopycat) return trialCopycat[t];
-  return phaseOf(t) === 'social_exposure' && socialCondition === 'experimental';
+  return isCopycatSlot(t) && socialCondition === 'experimental';
 }
 function phaseOf(t) {
   return trialPhase[t] || computePhase(t);
 }
 function computePhase(t) {
-  if (isManual()) return SETTINGS.manualPhase;
+  if (isManual()) return SETTINGS.manualPhase === 'exposure_copycat' ? 'exposure' : SETTINGS.manualPhase;
   const c = activeCounts();
   if (t <= c.baseline) return 'baseline';
-  if (t <= c.baseline + c.socialExposure) return 'social_exposure';
-  if (t <= c.baseline + c.socialExposure + c.exploit) return 'exploit';
+  if (t <= c.baseline + c.exposure) return 'exposure';
   return 'deterrence';
 }
 
@@ -2692,6 +2768,12 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
         animateCarTo(car, restY, settleDur, 'cubic-bezier(.25,.72,.25,1)', 0.65);
       }, stagger + halfDur);
     });
+
+    // V_18: the accordion (not on a brake, not in a lane where a copycat demo is running)
+    if (maneuverType !== 'brake' && hold3 === 0 && !demoBusy(lane)) {
+      const occupied = [ambLaneBefore, LANES[newPlayerLaneIdx]].filter(l => l === 'left' || l === 'right');
+      jamAccordion(lane, laneCars.map((car, idx) => ({ car, restY: laneSlots[idx] + car.jitterY })), durationMs, occupied);
+    }
   });
 }
 
@@ -2969,7 +3051,7 @@ function updateHud() {
   if (devInfo) {
     // Phase names are shown only to the experimenter (they would reveal the design to participants).
     const ph = phaseOf(trial);
-    $('phase').textContent = 'TEST · ' + PHASE_LABEL[ph] + (isManual() ? ' · manual' : '');
+    $('phase').textContent = 'TEST · ' + PHASE_LABEL[ph] + (copycatSlotOf(trial) ? ' · copycat trial' : '') + (isManual() ? ' · manual' : '');
     $('trial').textContent = isManual() ? `Trial ${trial}` : `Trial ${trial} / ${totalTrials()}`;
   } else {
     $('phase').textContent = '';
@@ -3804,7 +3886,7 @@ window.addEventListener('resize', fitLayout);
 // EXPERIMENTER PANEL (test mode only). Removed from the page when CFG.testMode = false.
 // =====================================================================
 // V_15: new key, so everyone's saved panel values reset to the new defaults (new fines).
-const SETTINGS_KEY = 'copycat_experiment_dev_settings_v16';
+const SETTINGS_KEY = 'copycat_experiment_dev_settings_v18';   // V_18: new trial-count fields
 const CFG_DEFAULTS = JSON.parse(JSON.stringify(CFG));
 const PARAM_KEYS = ['starting', 'jamStartTrial', 'openRoadReward', 'jamNormativeReward', 'shoulderReward',
                     'brakeCost', 'edgeBumpCost', 'high.p', 'high.fine', 'low.p', 'low.fine', 'crawl.durationScale'];
