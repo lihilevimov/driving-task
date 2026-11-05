@@ -820,6 +820,16 @@ body.layout-side .hint { max-width: 180px; text-align: center; }
   100% { opacity: 0; translate: 0 -30px; }
 }
 
+/* V_19: camera flash = an inspection (deterrence phase only). White, from the roadside, never red:
+   red stays reserved for fines. At most one flash per trial. */
+.cam-flash {
+  position: absolute; inset: 0; z-index: 28; pointer-events: none;
+  background: radial-gradient(circle at 96% var(--fy, 260px), rgba(255,255,255,.95) 0, rgba(255,255,255,.6) 50px,
+              rgba(255,255,255,.22) 190px, rgba(255,255,255,0) 380px);
+  animation: camFlash .45s ease-out forwards;
+}
+@keyframes camFlash { 0% { opacity: 0; } 14% { opacity: 1; } 100% { opacity: 0; } }
+
 /* "You hit the edge" bump: no red and no lost turn. V_15: costs CFG.edgeBumpCost points, shown like the brake cost. */
 @keyframes bumpRight { 0% { translate: 0 0; } 35% { translate: 9px 0; } 70% { translate: -2px 0; } 100% { translate: 0 0; } }
 @keyframes bumpLeft  { 0% { translate: 0 0; } 35% { translate: -9px 0; } 70% { translate: 2px 0; } 100% { translate: 0 0; } }
@@ -1069,23 +1079,36 @@ body.layout-side .navsvg { width: 168px; height: 238px; }
 // ==========================================
 const CFG = {
   testMode: true,
-  // V_18 pilot structure (approved by Lihi, 4 Nov 2026): baseline 15 (2 open road + 13 jam), exposure 10
-  // (no fines; exposure and exploit merged), deterrence 30. The copycat appears on exposure trials 1 and 4
-  // (trials 16 and 19 overall), leaving 6 trials without a social model before the fines start.
+  // V_19 structure (Lihi, 4 Nov 2026, sent to Yefim): baseline 20, exposure + exploit 20 (no fines),
+  // deterrence 60 = 100 trials. The copycat appears on exposure trials 1 and 4 (trials 21 and 24 overall),
+  // leaving 16 trials without a social model before the fines start. About a quarter of the trials are open
+  // road (see openRoad): baseline 4 open / 16 jam, exposure 4 / 16, deterrence 16 / 44.
+  // (V_18 pilot structure was 15 / 10 / 30 with a constant jam from trial 3.)
   countsTest: { baseline: 5, exposure: 6, deterrence: 4 },
-  countsFull: { baseline: 15, exposure: 10, deterrence: 30 },
+  countsFull: { baseline: 20, exposure: 20, deterrence: 60 },
   copycatAt: [1, 4],        // positions within the exposure phase (the same trials in both conditions)
   starting: 2000,
   // First trial on which the traffic jam is active (trials before it = open road).
   jamStartTrial: 3,
+  // V_19: the jam clears now and then. Open-road segments of segLen trials, spread evenly over each phase
+  // (segments = how many per phase at the full counts, scaled to other counts), at least minGap jam trials
+  // apart, and never within copycatGuard trials of a copycat position. The schedule is fixed by the seed, so
+  // every participant (both conditions, all cells) drives the same sequence. Extinction and recidivism are
+  // measured on jam trials only; shoulder use on the open road (no gain there) is a habit measure.
+  // On the open road the shoulder pays the same as the road and moves at the same speed.
+  openRoad: { on: true, segLen: 2, segments: { baseline: 1, exposure: 2, deterrence: 8 }, minGap: 3, copycatGuard: 2, seed: 20261104 },
   openRoadReward: 10,
   jamNormativeReward: 5,
   shoulderReward: 10,
   brakeCost: 1,            // V_16: 1 point (was 5)
-  // V_15: agreed with Yefim on 3 Nov 2026. Expected fine 11 in both regimes, so under deterrence the
-  // shoulder (10) is worse than the road in the jam (5) by 6 points per trial.
-  high: { p: 1, fine: 11 },
-  low: { p: 0.1, fine: 110 },
+  // V_19 (Lihi to Yefim, 4 Nov 2026; follows Teodorescu et al., 2021, PNAS): 90% x 6 vs 10% x 54.
+  // Expected fine 5.4 in both regimes, so in the jam the shoulder (10 - 5.4 = 4.6) is slightly worse than the
+  // road (5): close to indifference, so that a drop in violations reflects the frequency of fines rather than
+  // an obvious expected-value loss. (V_15-V_18: 100% x 11 vs 10% x 110.)
+  // Inspection is drawn on every deterrence trial, whatever the choice; an inspection is shown as a camera
+  // flash, and a fine follows only on the shoulder. So compliant drivers also see how often there is enforcement.
+  high: { p: 0.9, fine: 6 },
+  low: { p: 0.1, fine: 54 },
   // V_15: pressing toward the guardrail while already at the road edge costs the same as braking (V_16: 1 point).
   edgeBumpCost: 1,
   // V_16: one move on the shoulder passes this many cars of the queue (was 1), so the shoulder looks clearly faster.
@@ -1405,10 +1428,55 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_18';
+const VERSION = 'V_19';
 const $ = id => document.getElementById(id);
-// Single place that decides whether a trial is in the jam. (Later: alternating jam segments go here.)
-const isJamTrial = t => t >= CFG.jamStartTrial;
+// Single place that decides whether a trial is in the jam.
+// V_19: open-road segments (CFG.openRoad). Built once per run (reset in startGame); manual runs keep a constant jam.
+let openRoadSet = null;
+function buildRoadSchedule() {
+  const s = new Set();
+  for (let t = 1; t < CFG.jamStartTrial; t++) s.add(t);
+  const R = CFG.openRoad;
+  if (isManual() || !R || !R.on) return s;
+  const c = activeCounts(), full = CFG.countsFull;
+  let seed = R.seed >>> 0;
+  const rnd = () => {   // mulberry32: the same sequence for everyone
+    seed = (seed + 0x6D2B79F5) >>> 0;
+    let x = seed;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  const blocked = new Set();
+  CFG.copycatAt.forEach(k => {
+    const t = c.baseline + k;
+    for (let u = t - R.copycatGuard; u <= t + R.copycatGuard; u++) blocked.add(u);
+  });
+  const ok = start => {
+    for (let u = start; u < start + R.segLen; u++) if (blocked.has(u) || u < CFG.jamStartTrial) return false;
+    for (let u = start - R.minGap; u < start + R.segLen + R.minGap; u++) if (s.has(u)) return false;
+    return true;
+  };
+  let a = 1;
+  ['baseline', 'exposure', 'deterrence'].forEach(ph => {
+    const n = c[ph], b = a + n - 1;
+    const k = Math.round((R.segments[ph] || 0) * n / Math.max(1, full[ph]));
+    for (let i = 0; i < k; i++) {
+      const lo = a + Math.floor(i * n / k), hi = Math.min(b, a + Math.floor((i + 1) * n / k) - 1) - R.segLen + 1;
+      const cand = [];
+      for (let t = lo; t <= hi; t++) if (ok(t)) cand.push(t);
+      if (!cand.length) continue;
+      const st = cand[Math.floor(rnd() * cand.length)];
+      for (let u = st; u < st + R.segLen; u++) s.add(u);
+    }
+    a = b + 1;
+  });
+  return s;
+}
+function roadSchedule() { if (!openRoadSet) openRoadSet = buildRoadSchedule(); return openRoadSet; }
+const isJamTrial = t => t >= CFG.jamStartTrial && !roadSchedule().has(t);
+// Number of jam trials up to and including t (the index used for extinction / recidivism measures).
+function jamIndexOf(t) { let n = 0; for (let u = 1; u <= t; u++) if (isJamTrial(u)) n++; return isJamTrial(t) ? n : null; }
 // In test mode the counts come from the experimenter panel; in real runs from CFG.countsFull.
 const isManual = () => CFG.testMode && SETTINGS.runMode === 'manual';
 const activeCounts = () => CFG.testMode ? SETTINGS.counts : CFG.countsFull;
@@ -1598,6 +1666,7 @@ function baseRecord() {
     exposure_pos: exposurePos(trial),
     copycat_slot: copycatSlotOf(trial),
     jam: isJamTrial(trial),
+    jam_index: jamIndexOf(trial),   // V_19: position among jam trials (null on open road)
     copycat_shown: !!copycatInfo[trial],
     copycat_id: copycatInfo[trial] ? copycatInfo[trial].id : null,
     copycat_from_lane: copycatInfo[trial] ? copycatInfo[trial].fromLane : null,
@@ -2043,8 +2112,13 @@ function planAmbientStep(durationMs, d, maneuverType, laneBefore, laneAfter, upc
   }
 
   // 2) Where each car would be at the end of this move.
+  const playerRatio = d / Math.max(1e-6, vRef * durationMs);   // V_19: the player's speed in this move (1 = open road)
   ambientCars.forEach(c => {
     let y1;
+    if (c.release) {   // V_19: a released queue car: clearly faster than the player ahead, slower behind
+      c.release = false;
+      c.ratio = c.kind === 'cruise' ? playerRatio + 0.9 + Math.random() * 0.3 : playerRatio * 0.5;
+    }
     if (c.kind === 'overtake') {
       if (c.stage === 0) { y1 = c.approachY; c.stage = 1; }                    // comes up behind, in the other lane
       else if (occupied.includes(c.lane)) { c.kind = 'drop'; c.ratio = 0.86; y1 = natural(c, c.ratio); }  // player cut in: drops back
@@ -2129,6 +2203,33 @@ function absorbAmbientIntoJam(newPlayerLaneIdx, durationMs) {
         setTimeout(() => removeAmbient(c), durationMs + 50);
       }
     });
+  });
+}
+
+// V_19: the jam clears. Every queue car becomes an open-road car: the cars ahead release their brakes and pull
+// away (most leave the screen during this move), the cars behind drop back. When the next jam trial comes,
+// the open-road cars slow down and form the queue again (absorbAmbientIntoJam + CASE 0, as on trial 3).
+function releaseJam() {
+  const g = ambGeom();
+  const list = [...new Set([...trafficCars, ...rearCars])].filter(c => !c.removed && c.el);
+  trafficCars = [];
+  rearCars = [];
+  jamAbsorb = null;
+  list.forEach(c => {
+    const top = parseFloat(getComputedStyle(c.el).top);
+    const y = isFinite(top) ? top : c.y;
+    c.el.style.transition = 'none';
+    c.el.style.top = y + 'px';
+    c.el.classList.remove('braking');
+    c.el.classList.add('ambient');
+    c.departing = true;            // cancels a pending rear-slot animation of the jam engine
+    c.isCopycat = false;
+    c.zipping = false;
+    // Speeds are set in planAmbientStep relative to the player's own speed in this move (c.release).
+    Object.assign(c, { y, y0: y, y1: y, stage: 0, turnAt: null, holds: 0, release: true,
+                       kind: y < g.PY ? 'cruise' : 'drop', ratio: 1, ratioAfter: 1.06 + Math.random() * 0.14 });
+    if (c.jitterY === undefined) c.jitterY = 0;
+    ambientCars.push(c);
   });
 }
 
@@ -2421,6 +2522,7 @@ function setLang(v) {
 }
 
 function startGame() {
+  openRoadSet = null;   // V_19: the road schedule follows the counts of this run
   if (CFG.testMode) {
     // Conditions come from the experimenter panel (already applied to the globals).
     assignmentSource = 'experimenter_panel';
@@ -2589,8 +2691,10 @@ function advanceTrafficForStep(durationMs, upcomingTrial, maneuverType, newPlaye
   if (isJamTrial(upcomingTrial)) {
     if (ambientCars.length) absorbAmbientIntoJam(newPlayerLaneIdx, durationMs);
   } else {
+    if (trafficCars.length || rearCars.length) releaseJam();   // V_19: the jam clears for an open-road segment
+    // V_19: the shoulder is faster only in the jam (on the open road it moves like the road).
     const d = maneuverType === 'brake' ? CFG.brakeStepDist
-      : (['enter_shoulder', 'stay_shoulder', 'overtake_and_merge'].includes(maneuverType) ? CFG.shoulderStepDist : CFG.stepDist);
+      : ((['enter_shoulder', 'stay_shoulder', 'overtake_and_merge'].includes(maneuverType) && isJamTrial(upcomingTrial - 1)) ? CFG.shoulderStepDist : CFG.stepDist);
     planAmbientStep(durationMs, d, maneuverType, ambLaneBefore || LANES[newPlayerLaneIdx], LANES[newPlayerLaneIdx], upcomingTrial);
   }
   const isUpcomingCopycatTrial = isCopycatTrial(upcomingTrial);
@@ -3097,9 +3201,17 @@ function nextDecision() {
   renderDevStatus();
 }
 
-function rollFine() {
-  const rule = CFG[deterrenceCondition];
-  return Math.random() < rule.p ? rule.fine : 0;
+// V_19: inspection is drawn on every deterrence trial, whatever the choice (as in Teodorescu et al., 2021).
+// An inspection is shown as a camera flash; a fine follows only if the car is on the shoulder.
+function rollInspection(phase) {
+  return phase === 'deterrence' && Math.random() < CFG[deterrenceCondition].p;
+}
+function cameraFlash() {
+  const el = document.createElement('div');
+  el.className = 'cam-flash';
+  el.style.setProperty('--fy', Math.round(playerScreenY - 70) + 'px');
+  $('stage').appendChild(el);
+  setTimeout(() => el.remove(), 700);
 }
 
 function choose(key, fromQueue = false) {
@@ -3198,20 +3310,21 @@ function choose(key, fromQueue = false) {
     let outcome = null;
     setTimeout(() => {
       // If player is braking while on the shoulder during deterrence phase, roll for shoulder fine!
-      let fine = 0;
       const fineEligible = (wasOnShoulder && phase === 'deterrence');
-      if (fineEligible) fine = rollFine();
+      const inspected = rollInspection(phase);
+      const fine = (fineEligible && inspected) ? CFG[deterrenceCondition].fine : 0;
+      if (inspected) cameraFlash();
       const scoreAfterBrake = Math.max(0, score - CFG.brakeCost);
       const finalScore = Math.max(0, scoreAfterBrake - fine);
       const delay = presentOutcome('brake', -CFG.brakeCost, fine, scoreAfterBrake, finalScore);
-      outcome = { fine, fineEligible, finalScore, delay };
+      outcome = { fine, fineEligible, inspected, finalScore, delay };
       openBufferAfterOutcome();
     }, outcomeTime(brakeMs));
 
     setTimeout(() => {
       p.classList.remove('hard-brake');
       pruneOffscreenWorld();
-      const { fine, fineEligible, finalScore, delay: nextTrialDelayMs } = outcome;
+      const { fine, fineEligible, inspected, finalScore, delay: nextTrialDelayMs } = outcome;
 
       records.push({
         ...baseRecord(),
@@ -3224,6 +3337,7 @@ function choose(key, fromQueue = false) {
         violation_type: wasOnShoulder ? 'continuation' : 'none',
         reward: -CFG.brakeCost,
         fine_eligible: fineEligible,
+        inspected,
         fine,
         score_after: finalScore,
         copycat_visible_at_choice: copycatVisibleAtChoice,
@@ -3277,9 +3391,11 @@ function choose(key, fromQueue = false) {
     ? CFG.shoulderReward
     : (isJamTrial(trial) ? CFG.jamNormativeReward : CFG.openRoadReward);
 
-  const stepDist = isShoulder ? CFG.shoulderStepDist : CFG.stepDist;
+  // V_19: the shoulder is faster only in the jam; on the open road it moves like the road.
+  const fastShoulder = isShoulder && isJamTrial(trial);
+  const stepDist = fastShoulder ? CFG.shoulderStepDist : CFG.stepDist;
   const isJammedNormative = (isJamTrial(trial) && !isShoulder);
-  const driveDuration = Math.round((isShoulder
+  const driveDuration = Math.round((fastShoulder
     ? CFG.shoulderDriveMs
     : (isJamTrial(trial) ? CFG.jamDriveMs : CFG.freeDriveMs)) * motionScale());
 
@@ -3439,20 +3555,21 @@ function choose(key, fromQueue = false) {
     // Outcome first (in continuous mode at ~65% of the move), then the early-press window opens.
     let outcome = null;
     setTimeout(() => {
-      let fine = 0;
       const fineEligible = (isShoulder && phase === 'deterrence');
-      if (fineEligible) fine = rollFine();
+      const inspected = rollInspection(phase);
+      const fine = (fineEligible && inspected) ? CFG[deterrenceCondition].fine : 0;
+      if (inspected) cameraFlash();
       const scoreAfterReward = score + reward;
       const finalScore = Math.max(0, scoreAfterReward - fine);
       const delay = presentOutcome('drive', reward, fine, scoreAfterReward, finalScore);
-      outcome = { fine, fineEligible, finalScore, delay };
+      outcome = { fine, fineEligible, inspected, finalScore, delay };
       openBufferAfterOutcome();
     }, outcomeTime(driveDuration));
 
     setTimeout(() => {
       base.classList.remove('driving', 'fast', 'crawl');
       pruneOffscreenWorld();
-      const { fine, fineEligible, finalScore, delay: nextTrialDelayMs } = outcome;
+      const { fine, fineEligible, inspected, finalScore, delay: nextTrialDelayMs } = outcome;
 
       records.push({
         ...baseRecord(),
@@ -3465,6 +3582,7 @@ function choose(key, fromQueue = false) {
         violation_type: violationType,
         reward,
         fine_eligible: fineEligible,
+        inspected,
         fine,
         score_after: finalScore,
         copycat_visible_at_choice: copycatVisibleAtChoice,
@@ -3522,6 +3640,7 @@ function buildPayload() {
     lang,
     participant,
     finalScore: score,
+    openRoadTrials: [...roadSchedule()].sort((a, b) => a - b),   // V_19
     records,
     events
   };
@@ -3886,14 +4005,15 @@ window.addEventListener('resize', fitLayout);
 // EXPERIMENTER PANEL (test mode only). Removed from the page when CFG.testMode = false.
 // =====================================================================
 // V_15: new key, so everyone's saved panel values reset to the new defaults (new fines).
-const SETTINGS_KEY = 'copycat_experiment_dev_settings_v18';   // V_18: new trial-count fields
+const SETTINGS_KEY = 'copycat_experiment_dev_settings_v19';   // V_19: new fines and phase lengths
 const CFG_DEFAULTS = JSON.parse(JSON.stringify(CFG));
 const PARAM_KEYS = ['starting', 'jamStartTrial', 'openRoadReward', 'jamNormativeReward', 'shoulderReward',
                     'brakeCost', 'edgeBumpCost', 'high.p', 'high.fine', 'low.p', 'low.fine', 'crawl.durationScale'];
 const PRE_RUN_ONLY = ['starting', 'jamStartTrial'];
 const COUNT_PRESETS = { quick: CFG_DEFAULTS.countsTest, full: CFG_DEFAULTS.countsFull };
-// Payoff sets. 'agreed' = the numbers agreed with Yefim on 3 Nov 2026 (the defaults); 'proposal' = the proposal's example.
+// Payoff sets. 'current' = V_19 defaults (4 Nov 2026); 'agreed' = 3 Nov 2026; 'proposal' = the proposal's example.
 const PAYOFF_PRESETS = {
+  current:  { label: 'V_19 (90%×6 · 10%×54)',           openRoadReward: 10, jamNormativeReward: 5, shoulderReward: 10, 'high.p': 0.9, 'high.fine': 6, 'low.p': 0.1, 'low.fine': 54 },
   agreed:   { label: 'Agreed 3 Nov (100%×11 · 10%×110)', openRoadReward: 10, jamNormativeReward: 5, shoulderReward: 10, 'high.p': 1, 'high.fine': 11, 'low.p': 0.1, 'low.fine': 110 },
   proposal: { label: 'Proposal (90%×50 · 10%×450)',      openRoadReward: 10, jamNormativeReward: 5, shoulderReward: 10, 'high.p': 0.9, 'high.fine': 50, 'low.p': 0.1, 'low.fine': 450 }
 };
@@ -3993,9 +4113,10 @@ function renderEV() {
   const pct = p => Math.round(p * 100) + '%';
   $('evSummary').innerHTML = `
     <div><span class="k">Start:</span> <b>${CFG.starting}</b> points · <span class="k">jam from trial</span> <b>${CFG.jamStartTrial}</b></div>
+    <div><span class="k">Open road (this run's counts):</span> <b>${[...buildRoadSchedule()].sort((a, b) => a - b).join(', ')}</b></div>
     <div><span class="k">Per step:</span> open road <b>+${CFG.openRoadReward}</b> · jam road <b>+${CFG.jamNormativeReward}</b> · shoulder <b>+${CFG.shoulderReward}</b></div>
     <div><span class="k">Brake</span> <b>−${CFG.brakeCost}</b> · <span class="k">guardrail bump</span> <b>−${CFG.edgeBumpCost}</b></div>
-    <div><span class="k">Fines (deterrence, on the shoulder):</span> High <b>${pct(CFG.high.p)} × ${CFG.high.fine}</b> · Low <b>${pct(CFG.low.p)} × ${CFG.low.fine}</b></div>
+    <div><span class="k">Inspections (every deterrence trial; fine only on the shoulder):</span> High <b>${pct(CFG.high.p)} × ${CFG.high.fine}</b> · Low <b>${pct(CFG.low.p)} × ${CFG.low.fine}</b></div>
     <div><span class="k">Expected fine:</span> High <b>${fmt(evH)}</b> · Low <b>${fmt(evL)}</b> · <span class="k">shoulder vs road:</span> <b>${signed(adv - evH)}</b> / <b>${signed(adv - evL)}</b></div>`;
 }
 
@@ -4107,4 +4228,4 @@ fitLayout();
 requestAnimationFrame(crawlFrame);
 </script>
 </body>
-</html>
+</html>
