@@ -322,6 +322,8 @@ body {
   z-index: 3;
   pointer-events: none;
 }
+/* V_21: a car that reaches the finish line disappears */
+/* (the fade is added to the car's own transition list in vanishCar, so its movement continues smoothly) */
 /* V_17: chequered finish line, reached on the last move */
 .finish-line {
   position: absolute; left: 10%; right: 10%; height: 24px; z-index: 2; pointer-events: none;
@@ -1126,6 +1128,9 @@ const CFG = {
   // V_15: light, irregular traffic on the open road (normative lanes only, never on the shoulder).
   ambientTraffic: true,
   ambient: { maxCars: 4, maxPerLane: 2 },
+  // V_21: on the open road, if the participant has not moved for delayMs, the cars around drive on and leave
+  // (cars ahead pull away upwards, cars behind drop back). Each car has its own delay and top speed.
+  openRoadIdle: { delayMs: 2000, accel: 70, vmax: [70, 150], staggerMs: [0, 1200] },
   // V_17: the jam is alive while the participant waits. Each lane creeps forward in slow waves (front car
   // first, the rest following), so the queue ahead stops at most aheadPx further away; the next move closes
   // the gap again. Now and then a car near the top of the screen changes between the two normal lanes.
@@ -1430,7 +1435,7 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_20';
+const VERSION = 'V_21';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam.
 // V_19: open-road segments (CFG.openRoad). Built once per run (reset in startGame); manual runs keep a constant jam.
@@ -1559,6 +1564,8 @@ function crawlFrame(ts) {
     }
   }
   renderAmbient();   // V_15
+  ambientIdleFrame(ts);   // V_21
+  finishCrossFrame();     // V_21
   renderWaves(ts);   // V_17
   navFrame(ts);      // V_15
   requestAnimationFrame(crawlFrame);
@@ -2075,6 +2082,8 @@ function seedAmbient() {
 }
 // Plans every open-road car's position for the move that is starting now.
 function planAmbientStep(durationMs, d, maneuverType, laneBefore, laneAfter, upcomingTrial) {
+  ambIdle = null;   // V_21: the participant moves: the cars go back to moving with the road
+  ambientCars.forEach(c => { c.idle = null; });
   const g = ambGeom();
   const stageH = $('stage').clientHeight || 540;
   ambientCars.forEach(c => { if (c.y < -g.CH - 6 || c.y > stageH + 4) removeAmbient(c); });
@@ -2099,7 +2108,7 @@ function planAmbientStep(durationMs, d, maneuverType, laneBefore, laneAfter, upc
     const pTop = preJam ? 0.9 : [0.85, 0.55, 0.32, 0.15][Math.min(3, n)];
     if (Math.random() < pTop) {
       const cand = NORM_LANES.filter(l => laneCount(l) < CFG.ambient.maxPerLane &&
-        !ambientCars.some(c => c.lane === l && (c.y < 15 || c.kind === 'overtake')));
+        !ambientCars.some(c => c.lane === l && (c.y < 15 || c.kind === 'overtake')) && !laneTopBusy(l));
       if (cand.length) {
         const lane = rand(cand);
         const c = spawnAmbientCar(lane, -96 - randInt(0, 30), preJam ? 0.72 : 0.78 + Math.random() * 0.14, 'cruise');
@@ -2125,7 +2134,7 @@ function planAmbientStep(durationMs, d, maneuverType, laneBefore, laneAfter, upc
     let y1;
     if (c.release) {   // V_19: a released queue car: clearly faster than the player ahead, slower behind
       c.release = false;
-      c.ratio = c.kind === 'cruise' ? playerRatio + 0.9 + Math.random() * 0.3 : playerRatio * 0.5;
+      c.ratio = c.kind === 'cruise' ? playerRatio + (c.exitBoost ? 1.6 : 0.9 + Math.random() * 0.3) : playerRatio * 0.5;   // V_21: exitBoost
     }
     if (c.kind === 'overtake') {
       if (c.stage === 0) { y1 = c.approachY; c.stage = 1; }                    // comes up behind, in the other lane
@@ -2186,6 +2195,7 @@ function planAmbientStep(durationMs, d, maneuverType, laneBefore, laneAfter, upc
 }
 // The jam begins: cars ahead join the queue (CASE 0 uses them), one car behind becomes the rear car.
 function absorbAmbientIntoJam(newPlayerLaneIdx, durationMs) {
+  ambIdle = null;   // V_21
   jamAbsorb = { left: [], right: [] };
   if (!ambientCars.length) return;
   const g = ambGeom();
@@ -2219,15 +2229,27 @@ function absorbAmbientIntoJam(newPlayerLaneIdx, durationMs) {
 // the open-road cars slow down and form the queue again (absorbAmbientIntoJam + CASE 0, as on trial 3).
 function releaseJam() {
   const g = ambGeom();
-  const list = [...new Set([...trafficCars, ...rearCars])].filter(c => !c.removed && c.el);
+  // V_21: a car still driving off the top after a lane change is released too, and leaves fastest (exitBoost).
+  const leaving = [...exitingCars].filter(c => !c.removed && c.el);
+  leaving.forEach(c => { c.exitBoost = true; exitingCars.delete(c); });
+  const list = [...new Set([...trafficCars, ...rearCars, ...leaving])].filter(c => !c.removed && c.el);
   trafficCars = [];
   rearCars = [];
   jamAbsorb = null;
   list.forEach(c => {
     const top = parseFloat(getComputedStyle(c.el).top);
     const y = isFinite(top) ? top : c.y;
+    // V_21: a car in the middle of a lane change keeps sliding sideways from where it is (no jump).
+    const midLaneChange = c.zipping || c.el.classList.contains('steer-left') || c.el.classList.contains('steer-right');
+    const leftNow = getComputedStyle(c.el).left;
     c.el.style.transition = 'none';
     c.el.style.top = y + 'px';
+    if (midLaneChange) {
+      c.el.style.left = leftNow;
+      void c.el.offsetHeight;
+      c.el.style.transition = 'left 700ms cubic-bezier(.2,.6,.3,1)';
+      c.el.style.left = laneX(c.lane) + '%';
+    }
     c.el.classList.remove('braking');
     c.el.classList.add('ambient');
     c.departing = true;            // cancels a pending rear-slot animation of the jam engine
@@ -2329,7 +2351,7 @@ function startJamLife() {
   const L = CFG.jamLife;
   if (!L || !running || finished || !isJamTrial(trial)) return;
   if (L.waves) ['left', 'right'].forEach(lane => setTimeout(() => waveLoop(lane, tok), randInt(L.firstMs[0], L.firstMs[1])));
-  if (L.laneChanges && !copycatSlotOf(trial) && Math.random() < L.laneChangeP) {
+  if (L.laneChanges && !copycatSlotOf(trial) && isJamTrial(trial + 1) && Math.random() < L.laneChangeP) {
     setTimeout(() => tryNpcLaneChange(tok), randInt(L.laneChangeAtMs[0], L.laneChangeAtMs[1]));
   }
 }
@@ -2375,7 +2397,7 @@ function visTop(c) {   // where the car is drawn now, and where it is heading (t
 }
 function tryNpcLaneChange(tok) {
   if (tok !== waveToken || !running || finished || locked) return;
-  if (copycatSlotOf(trial) || demoBusy()) return;
+  if (copycatSlotOf(trial) || demoBusy() || !isJamTrial(trial + 1)) return;   // V_21: not right before the jam clears
   // V_18: wait only until the cars involved have stopped moving into place after the last move.
   const moving = c => c.el.getAnimations().some(a => a.transitionProperty === 'top' || a.transitionProperty === 'left');
   const order = Math.random() < 0.5 ? [['left', 'right'], ['right', 'left']] : [['right', 'left'], ['left', 'right']];
@@ -2465,6 +2487,106 @@ function jamAccordion(lane, list, durationMs, occupied) {
     setWave(car, amp, rise);
     setTimeout(() => { if (stepSeq === seq && !car.removed) setWave(car, 0, back); }, rise);
   });
+}
+
+// V_21: is any drawn car in this lane near the top of the screen (tracked or not, e.g. still leaving)?
+function laneTopBusy(lane) {
+  const x = laneX(lane);
+  return [...document.querySelectorAll('#trafficLayer .car:not(#player)')].some(el => {
+    if (Math.abs(parseFloat(el.style.left) - x) > 3) return false;
+    const top = parseFloat(getComputedStyle(el).top);
+    return Number.isFinite(top) && top < 70;
+  });
+}
+
+// =====================================================================
+// V_21: OPEN ROAD, PARTICIPANT STANDING STILL. After openRoadIdle.delayMs without a move, the open-road cars
+// drive on: those ahead pull away upwards, those behind drop back, and leave the screen. Within a lane the car
+// in front always starts first and is never slower, so no car closes up on another. Nothing moves toward the
+// player or into a lane beside it. The next move stops this (planAmbientStep starts from where the cars are).
+// =====================================================================
+let ambIdle = null;
+function startAmbientIdle() {
+  ambIdle = null;
+  if (!running || finished || isJamTrial(trial) || !ambientCars.length || !CFG.openRoadIdle) return;
+  const I = CFG.openRoadIdle, PY = CFG.playerNormY;
+  const now = performance.now();
+  // V_21: on the last open trial before a jam the cars ahead are slowing down for the queue: they roll on a
+  // little and stop (brake lights on) instead of driving away, and the cars behind stay.
+  const preJam = isJamTrial(trial + 1);
+  ['left', 'right'].forEach(lane => {
+    const cars = ambientCars.filter(c => c.lane === lane);
+    // the car leading the way out first: ahead cars from the top down, behind cars from the bottom up
+    const ahead = cars.filter(c => c.y < PY).sort((a, b) => a.y - b.y);
+    const behind = cars.filter(c => c.y >= PY).sort((a, b) => b.y - a.y);
+    [[ahead, -1], [behind, 1]].forEach(([list, dir]) => {
+      let delay = 0, vmax = Infinity;
+      list.forEach((c, i) => {
+        delay = Math.max(delay, randInt(I.staggerMs[0], I.staggerMs[1]));
+        vmax = Math.min(vmax, preJam ? randInt(18, 32) : randInt(I.vmax[0], I.vmax[1]));
+        if (preJam && dir > 0) { c.idle = null; return; }
+        c.idle = { dir, delay: delay + i * 150, vmax, v: 0, dist: 0, maxDist: preJam ? 40 : Infinity, preJam };
+      });
+    });
+  });
+  ambIdle = { at: now + I.delayMs, last: now, logged: false };
+}
+function ambientIdleFrame(now) {
+  if (!ambIdle || !ambientCars.length) return;
+  const dt = Math.min(0.05, Math.max(0, (now - ambIdle.last) / 1000));
+  ambIdle.last = now;
+  if (now < ambIdle.at) return;
+  if (!ambIdle.logged) { ambIdle.logged = true; logEvent('open_road_cars_drive_on'); }
+  const stageH = $('stage').clientHeight || 540;
+  ambientCars.forEach(c => {
+    if (!c.idle || now - ambIdle.at < c.idle.delay || c.idle.dist >= c.idle.maxDist) return;
+    if (!c.idle.started) { c.idle.started = true; c.el.classList.remove('braking'); }
+    c.idle.v = Math.min(c.idle.vmax, c.idle.v + CFG.openRoadIdle.accel * dt);
+    const dy = c.idle.dir * Math.min(c.idle.v * dt, c.idle.maxDist - c.idle.dist);
+    c.idle.dist += Math.abs(dy);
+    if (c.idle.dist >= c.idle.maxDist && c.idle.preJam) c.el.classList.add('braking');
+    c.y0 += dy; c.y1 += dy; c.y += dy;
+    c.el.style.top = c.y.toFixed(1) + 'px';
+    if (c.y < -96 || c.y > stageH + 6) removeAmbient(c);
+  });
+  ambientCars = ambientCars.filter(c => !c.removed);
+}
+
+// V_21: on the last move, every other car that the finish line reaches (the line passes its middle) fades out.
+// After the participant has arrived, cars in the other lanes that are still below the line drive up to it and
+// fade out too. A car behind the participant in the same lane stays (it never reaches the line).
+function finishCrossFrame() {
+  const fl = $('finishLine');
+  if (!fl) return;
+  const ly = fl.getBoundingClientRect().top;
+  document.querySelectorAll('#trafficLayer .car:not(#player):not(.finish-gone)').forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (ly >= (r.top + r.bottom) / 2) vanishCar(el);
+  });
+}
+function vanishCar(el) {
+  el.classList.add('finish-gone');
+  const tr = el.style.transition && el.style.transition !== 'none' ? el.style.transition + ', ' : '';
+  el.style.transition = tr + 'opacity 260ms ease';
+  el.style.opacity = '0';
+  setTimeout(() => {
+    el.remove();
+    [trafficCars, rearCars, ambientCars].forEach(list => list.forEach(c => { if (c.el === el) c.removed = true; }));
+  }, 300);
+}
+function driveRestToFinish() {
+  const fl = $('finishLine');
+  if (!fl) return 0;
+  const playerLane = LANES[playerLaneIdx];
+  let n = 0;
+  [...trafficCars, ...rearCars].forEach(c => {
+    if (c.removed || !c.el || c.el.classList.contains('finish-gone') || c.lane === playerLane) return;
+    if (!(c.lane === 'left' || c.lane === 'right')) return;
+    animateCarTo(c, c.y - 280, 1300, 'cubic-bezier(.45,0,.6,1)', 0);   // same distance and timing for all: gaps stay
+    c.el.classList.remove('braking');
+    n++;
+  });
+  return n;
 }
 
 // V_17: chequered finish line, placed so that the last move ends with the car's nose on it.
@@ -3220,6 +3342,7 @@ function nextDecision() {
   setLocked(false);
   trialStarted = performance.now();
   startJamLife();   // V_17
+  startAmbientIdle();   // V_21
   if (bufferedKey) {
     const k = bufferedKey;
     pendingBufferedRt = Math.round(bufferedAt - trialStarted);
@@ -3663,7 +3786,9 @@ function finish() {
   const showEnd = () => {
     const rolling = crawlActive() && worldOffset - crawl.shown > 1;
     if (rolling && performance.now() - t0 < 3000) { requestAnimationFrame(showEnd); return; }
-    setTimeout(() => { showScreen(screensMode() === 'skip' ? 'testEnd' : 'arrived'); renderDevStatus(); }, $('finishLine') ? 700 : 0);
+    // V_21: cars in the other lanes still below the line drive up to it and disappear there.
+    const n = driveRestToFinish();
+    setTimeout(() => { showScreen(screensMode() === 'skip' ? 'testEnd' : 'arrived'); renderDevStatus(); }, $('finishLine') ? (n ? 1500 : 700) : 0);
   };
   showEnd();
   renderDevStatus();
@@ -4189,4 +4314,4 @@ fitLayout();
 requestAnimationFrame(crawlFrame);
 </script>
 </body>
-</html>
+</html>
