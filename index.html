@@ -834,6 +834,8 @@ body.layout-side .hint { max-width: 180px; text-align: center; }
 @keyframes bumpRight { 0% { translate: 0 0; } 35% { translate: 9px 0; } 70% { translate: -2px 0; } 100% { translate: 0 0; } }
 @keyframes bumpLeft  { 0% { translate: 0 0; } 35% { translate: -9px 0; } 70% { translate: 2px 0; } 100% { translate: 0 0; } }
 @keyframes stageRumble { 0%, 100% { translate: 0 0; } 25% { translate: 2px 0; } 50% { translate: -2px 0; } 75% { translate: 1px 0; } }
+@keyframes brakeDip { 0% { translate: 0 0; } 40% { translate: 0 7px; } 100% { translate: 0 0; } }
+.car.brake-dip { animation: brakeDip .34s ease-out; }
 .car.bump-right { animation: bumpRight .32s ease-out; }
 .car.bump-left  { animation: bumpLeft .32s ease-out; }
 .stage.rumble { animation: stageRumble .26s linear; }
@@ -1100,7 +1102,7 @@ const CFG = {
   openRoadReward: 10,
   jamNormativeReward: 5,
   shoulderReward: 10,
-  brakeCost: 1,            // V_16: 1 point (was 5)
+  brakeCost: 1,            // V_16: 1 point (was 5). V_20: a brake no longer uses the turn (like the guardrail bump)
   // V_19 (Lihi to Yefim, 4 Nov 2026; follows Teodorescu et al., 2021, PNAS): 90% x 6 vs 10% x 54.
   // Expected fine 5.4 in both regimes, so in the jam the shoulder (10 - 5.4 = 4.6) is slightly worse than the
   // road (5): close to indifference, so that a drop in violations reflects the frequency of fines rather than
@@ -1428,7 +1430,7 @@ const TXT = {
   }
 };
 
-const VERSION = 'V_19';
+const VERSION = 'V_20';
 const $ = id => document.getElementById(id);
 // Single place that decides whether a trial is in the jam.
 // V_19: open-road segments (CFG.openRoad). Built once per run (reset in startGame); manual runs keep a constant jam.
@@ -1502,6 +1504,9 @@ let bufferedAt = 0;
 let pendingBufferedRt = null;
 let invalidSidePresses = 0;      // presses toward the guardrail while already at the road edge (this trial)
 let edgeBumpCostTrial = 0;       // V_15: points lost to edge bumps on this trial
+let brakePresses = 0;            // V_20: brake presses on this trial (a brake does not end the trial)
+let brakeCostTrial = 0;          // V_20: points lost to braking on this trial
+let ignoredPresses = 0;          // V_20: presses while a move was running that were not used (not buffered)
 let currentLight = 0;            // V_15: 0 = midday, 1 = end of the route (late afternoon)
 let ambientCars = [];            // V_15: free-flowing cars on the open road (not part of the jam engine)
 let copycatDemo = null;          // V_15: timing of the running / last demo { t, lane, t0, fillAt, mergeOkAt, seq }
@@ -1675,6 +1680,9 @@ function baseRecord() {
     motion: motionMode(),
     invalid_side_presses: invalidSidePresses,
     edge_bump_cost: edgeBumpCostTrial,
+    brake_presses: brakePresses,      // V_20
+    brake_cost: brakeCostTrial,       // V_20 (already included in score_after, like edge_bump_cost)
+    ignored_presses: ignoredPresses,  // V_20
     jam_waves: jamWavesTrial,
     npc_lane_changes: npcLaneChangesTrial,
     light_level: +currentLight.toFixed(3),
@@ -3129,6 +3137,25 @@ function edgeBump(dir) {
   }
 }
 
+// V_20: a brake in place. Brake lights and a small dip, no movement, no turn used; costs CFG.brakeCost
+// (grey, never red). No inspection or fine: only a move can be inspected.
+function brakeTap() {
+  const p = $('player');
+  p.classList.add('braking', 'hard-brake');
+  p.classList.remove('brake-dip');
+  void p.offsetWidth;
+  p.classList.add('brake-dip');
+  setTimeout(() => { p.classList.remove('hard-brake', 'brake-dip'); }, 380);
+  brakePresses++;
+  logEvent('brake_press');
+  const cost = Number(CFG.brakeCost) || 0;
+  if (cost > 0) {
+    brakeCostTrial += cost;
+    setScore(Math.max(0, score - cost), 'neutral');
+    showPop('−' + cost, 'brake');
+  }
+}
+
 function updateProgress() {
   const bar = $('progress');
   if (!running && !finished) { bar.classList.add('hidden'); return; }
@@ -3175,6 +3202,9 @@ function nextDecision() {
   trialBlurCount = 0;
   invalidSidePresses = 0;
   edgeBumpCostTrial = 0;
+  brakePresses = 0;
+  brakeCostTrial = 0;
+  ignoredPresses = 0;
   jamWavesTrial = 0;
   npcLaneChangesTrial = 0;
   updateProgress();
@@ -3225,6 +3255,8 @@ function choose(key, fromQueue = false) {
       // Early press in the last moments of a move: carried over to the next trial.
       bufferedKey = key;
       bufferedAt = performance.now();
+    } else if (running && !finished) {
+      ignoredPresses++;   // V_20: a press that was not used (logged with the trial being driven)
     }
     return;
   }
@@ -3233,6 +3265,15 @@ function choose(key, fromQueue = false) {
   if ((key === 'ArrowRight' && playerLaneIdx === LANES.length - 1) || (key === 'ArrowLeft' && playerLaneIdx === 0)) {
     pendingBufferedRt = null;
     edgeBump(key === 'ArrowRight' ? 'right' : 'left');
+    return;
+  }
+
+  // V_20: braking does NOT use the turn (like the guardrail bump): the car brakes in place, it costs
+  // CFG.brakeCost, and the trial stays open until the participant drives on. (Before V_20 a brake was a
+  // full trial, so the whole route could be completed by braking only, and faster than by driving.)
+  if (key === 'ArrowDown') {
+    pendingBufferedRt = null;
+    brakeTap();
     return;
   }
 
@@ -3278,86 +3319,6 @@ function choose(key, fromQueue = false) {
   const laneBefore = LANES[playerLaneIdx];
   ambLaneBefore = laneBefore;
   const wasOnShoulder = (laneBefore === 'shoulder' || laneBefore === 'leftShoulder');
-
-  // ==========================================
-  // CASE A: DOWN ARROW -> ACTIVE BRAKING (-5 points, PLUS FINE IF STAYING ON SHOULDER IN DETERRENCE!)
-  // ==========================================
-  if (key === 'ArrowDown') {
-    const brakeMs = Math.round(CFG.brakeMs * motionScale());
-    p.classList.add('braking', 'hard-brake');
-    p.style.transition = 'top 0.22s ease-out';
-    p.style.top = (playerScreenY + 8) + 'px';
-    setTimeout(() => { p.style.top = playerScreenY + 'px'; }, 240);
-
-    seedSceneryUpTo(screenToWorldY(-1100));
-    advanceTrafficForStep(brakeMs, trial + 1, 'brake', playerLaneIdx);
-
-    placeFinishLine(CFG.brakeStepDist);   // V_17
-    worldOffset += CFG.brakeStepDist;
-    setNavTarget(routeFrac(trial), brakeMs);
-    const w = $('world');
-    if (crawlActive()) {
-      glideTo(brakeMs);
-    } else {
-      w.style.transition = `transform ${brakeMs}ms ease-out`;
-      if (motionSmooth()) scrollDivider(brakeMs, 'ease-out');
-      requestAnimationFrame(() => {
-        w.style.transform = `translateY(${worldOffset}px)`;
-      });
-    }
-
-    // Outcome first (in continuous mode at ~65% of the move), then the early-press window opens.
-    let outcome = null;
-    setTimeout(() => {
-      // If player is braking while on the shoulder during deterrence phase, roll for shoulder fine!
-      const fineEligible = (wasOnShoulder && phase === 'deterrence');
-      const inspected = rollInspection(phase);
-      const fine = (fineEligible && inspected) ? CFG[deterrenceCondition].fine : 0;
-      if (inspected) cameraFlash();
-      const scoreAfterBrake = Math.max(0, score - CFG.brakeCost);
-      const finalScore = Math.max(0, scoreAfterBrake - fine);
-      const delay = presentOutcome('brake', -CFG.brakeCost, fine, scoreAfterBrake, finalScore);
-      outcome = { fine, fineEligible, inspected, finalScore, delay };
-      openBufferAfterOutcome();
-    }, outcomeTime(brakeMs));
-
-    setTimeout(() => {
-      p.classList.remove('hard-brake');
-      pruneOffscreenWorld();
-      const { fine, fineEligible, inspected, finalScore, delay: nextTrialDelayMs } = outcome;
-
-      records.push({
-        ...baseRecord(),
-        key,
-        lane_before: laneBefore,
-        lane_after: laneBefore,
-        choice: 'brake',
-        maneuver_type: 'brake',
-        is_violation: wasOnShoulder,
-        violation_type: wasOnShoulder ? 'continuation' : 'none',
-        reward: -CFG.brakeCost,
-        fine_eligible: fineEligible,
-        inspected,
-        fine,
-        score_after: finalScore,
-        copycat_visible_at_choice: copycatVisibleAtChoice,
-        copycat_running_at_choice: copycatRunningAtChoice,
-        merge_wait_ms: mergeWaitMs,
-        ambient_cars_at_choice: ambientAtChoice,
-        buffered_press: bufferedPress,
-        rt
-      });
-      renderDevStatus();
-      // V_15: a demo waits until the previous copycat has moved on (matters only after a very short move).
-      const nextT = trial + 1;
-      const demoWait = copycatStartWait(nextT);
-      if (demoWait > 0) setTimeout(() => maybeStartCopycatFor(nextT), demoWait);
-      else maybeStartCopycatFor(nextT);
-
-      setTimeout(nextDecision, Math.max(nextTrialDelayMs, demoWait));
-    }, endTime(brakeMs));
-    return;
-  }
 
   // ==========================================
   // CASE B: TWO-STAGE COLLISION-FREE FORWARD & LATERAL NAVIGATION
@@ -4005,7 +3966,7 @@ window.addEventListener('resize', fitLayout);
 // EXPERIMENTER PANEL (test mode only). Removed from the page when CFG.testMode = false.
 // =====================================================================
 // V_15: new key, so everyone's saved panel values reset to the new defaults (new fines).
-const SETTINGS_KEY = 'copycat_experiment_dev_settings_v19';   // V_19: new fines and phase lengths
+const SETTINGS_KEY = 'copycat_experiment_dev_settings_v20';   // V_20: braking no longer uses a turn
 const CFG_DEFAULTS = JSON.parse(JSON.stringify(CFG));
 const PARAM_KEYS = ['starting', 'jamStartTrial', 'openRoadReward', 'jamNormativeReward', 'shoulderReward',
                     'brakeCost', 'edgeBumpCost', 'high.p', 'high.fine', 'low.p', 'low.fine', 'crawl.durationScale'];
@@ -4115,7 +4076,7 @@ function renderEV() {
     <div><span class="k">Start:</span> <b>${CFG.starting}</b> points · <span class="k">jam from trial</span> <b>${CFG.jamStartTrial}</b></div>
     <div><span class="k">Open road (this run's counts):</span> <b>${[...buildRoadSchedule()].sort((a, b) => a - b).join(', ')}</b></div>
     <div><span class="k">Per step:</span> open road <b>+${CFG.openRoadReward}</b> · jam road <b>+${CFG.jamNormativeReward}</b> · shoulder <b>+${CFG.shoulderReward}</b></div>
-    <div><span class="k">Brake</span> <b>−${CFG.brakeCost}</b> · <span class="k">guardrail bump</span> <b>−${CFG.edgeBumpCost}</b></div>
+    <div><span class="k">Brake</span> <b>−${CFG.brakeCost}</b> · <span class="k">guardrail bump</span> <b>−${CFG.edgeBumpCost}</b> <span class="k">(neither uses the turn)</span></div>
     <div><span class="k">Inspections (every deterrence trial; fine only on the shoulder):</span> High <b>${pct(CFG.high.p)} × ${CFG.high.fine}</b> · Low <b>${pct(CFG.low.p)} × ${CFG.low.fine}</b></div>
     <div><span class="k">Expected fine:</span> High <b>${fmt(evH)}</b> · Low <b>${fmt(evL)}</b> · <span class="k">shoulder vs road:</span> <b>${signed(adv - evH)}</b> / <b>${signed(adv - evL)}</b></div>`;
 }
